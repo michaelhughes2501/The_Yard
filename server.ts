@@ -207,6 +207,16 @@ db.exec(`
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(moderator_id) REFERENCES users(id)
   );
+  CREATE TABLE IF NOT EXISTS connections (
+    id TEXT PRIMARY KEY,
+    requester_id TEXT,
+    receiver_id TEXT,
+    status TEXT DEFAULT 'connected',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(requester_id) REFERENCES users(id),
+    FOREIGN KEY(receiver_id) REFERENCES users(id),
+    UNIQUE(requester_id, receiver_id)
+  );
 `);
 
 async function startServer() {
@@ -359,6 +369,58 @@ async function startServer() {
       );
     }
     res.json({ success: true });
+  });
+
+  // Connections routes
+  app.get("/api/connections", requireAuth, (req: any, res) => {
+    try {
+      const connections = db.prepare("SELECT receiver_id FROM connections WHERE requester_id = ?").all(req.userId) as { receiver_id: string }[];
+      res.json(connections.map(c => c.receiver_id));
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/connections", requireAuth, (req: any, res) => {
+    const { receiverId } = req.body;
+    if (!receiverId) {
+      return res.status(400).json({ error: "receiverId is required" });
+    }
+    if (receiverId === req.userId) {
+      return res.status(400).json({ error: "Cannot connect to yourself" });
+    }
+    try {
+      const id = crypto.randomUUID();
+      db.prepare("INSERT OR IGNORE INTO connections (id, requester_id, receiver_id) VALUES (?, ?, ?)").run(id, req.userId, receiverId);
+      
+      // Send notification to receiver
+      const sender = db.prepare("SELECT username FROM users WHERE id = ?").get(req.userId) as { username: string } | undefined;
+      const notificationId = crypto.randomUUID();
+      db.prepare(`
+        INSERT INTO notifications (id, user_id, type, content, link, is_read)
+        VALUES (?, ?, ?, ?, ?, 0)
+      `).run(
+        notificationId,
+        receiverId,
+        'connection',
+        `${sender?.username || 'Someone'} connected with you in The Yard.`,
+        'yard'
+      );
+
+      res.json({ success: true, connected: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/connections/:receiverId", requireAuth, (req: any, res) => {
+    const { receiverId } = req.params;
+    try {
+      db.prepare("DELETE FROM connections WHERE requester_id = ? AND receiver_id = ?").run(req.userId, receiverId);
+      res.json({ success: true, connected: false });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // Jobs Routes
