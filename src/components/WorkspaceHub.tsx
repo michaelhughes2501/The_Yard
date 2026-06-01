@@ -19,7 +19,8 @@ import {
   Clock,
   Link,
   CloudLightning,
-  AlertCircle
+  AlertCircle,
+  Calendar
 } from 'lucide-react';
 import { 
   isGoogleConnected, 
@@ -31,7 +32,10 @@ import {
   sendGmailMessage, 
   listGoogleChatSpaces, 
   createGoogleMeetSpace, 
-  listGoogleContacts 
+  listGoogleContacts,
+  listGoogleCalendarEvents,
+  updateGoogleCalendarEvent,
+  addGoogleCalendarEvent
 } from '../services/googleWorkspace.ts';
 import ConfirmationDialog from './ConfirmationDialog';
 
@@ -64,6 +68,13 @@ export default function WorkspaceHub() {
   const [confirmSendEmail, setConfirmSendEmail] = useState(false);
   const [confirmBackupDocId, setConfirmBackupDocId] = useState<string | null>(null);
 
+  // Calendar Background Sync States
+  const [syncLogs, setSyncLogs] = useState<string[]>([]);
+  const [isAutoSyncEnabled, setIsAutoSyncEnabled] = useState(true);
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const [syncInProgress, setSyncInProgress] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'scanning' | 'success' | 'error'>('idle');
+
   // Fetch local documents from the app vault
   const fetchLocalDocs = async () => {
     try {
@@ -78,6 +89,130 @@ export default function WorkspaceHub() {
       console.error('Error fetching vault documents:', err);
     }
   };
+
+  const runCalendarSync = async (silent = false) => {
+    if (!isGoogleConnected()) return;
+    if (syncInProgress) return;
+
+    if (!silent) {
+      setSyncInProgress(true);
+      setSyncStatus('scanning');
+    }
+    const log = (msg: string) => {
+      setSyncLogs(prev => [ `[${new Date().toLocaleTimeString()}] ${msg}`, ...prev.slice(0, 19) ]);
+    };
+
+    try {
+      log('Starting sync: checking case hearings against Google Calendar...');
+      
+      // 1. Fetch user's cases from local db
+      const casesRes = await fetch('/api/legal-cases', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!casesRes.ok) throw new Error('Failed to fetch legal cases.');
+      const cases: any[] = await casesRes.json();
+      
+      const casesWithHearings = cases.filter(c => c.next_hearing_date);
+      log(`Found ${casesWithHearings.length} cases with future hearing dates.`);
+
+      if (casesWithHearings.length === 0) {
+        log('No upcoming hearings found to sync.');
+        setSyncStatus('success');
+        setLastSyncTime(new Date());
+        return;
+      }
+
+      // 2. Fetch all Google Calendar events
+      const calendarEvents = await listGoogleCalendarEvents();
+      log(`Fetched ${calendarEvents.length} existing calendar events.`);
+
+      let mismatchCount = 0;
+      let insertedCount = 0;
+      let updatedCount = 0;
+
+      for (const legalCase of casesWithHearings) {
+        const expectedSummary = `Hearing: Case #${legalCase.case_number}`;
+        const newDateStr = legalCase.next_hearing_date; // YYYY-MM-DD
+        
+        // Find existing event for this case
+        const matchedEvent = calendarEvents.find((evt: any) => 
+          evt.summary === expectedSummary || 
+          evt.summary?.includes(`Case #${legalCase.case_number}`)
+        );
+
+        const calendarLocation = legalCase.court || 'Court';
+        const calendarDescription = `Case Tracker reference of Case #${legalCase.case_number} at ${legalCase.court || 'Court'}.\n\nNotes:\n${legalCase.notes || 'No notes provided.'}\n\nSynced automatically from The Yard.`;
+
+        if (matchedEvent) {
+          // Event exists, check for discrepancies
+          const currentEventDate = matchedEvent.start?.date || matchedEvent.start?.dateTime?.split('T')[0];
+          
+          if (currentEventDate !== newDateStr) {
+            log(`Discrepancy found for Case #${legalCase.case_number}! Calendar: ${currentEventDate || 'N/A'}, Local: ${newDateStr}. Auto-updating...`);
+            mismatchCount++;
+            
+            await updateGoogleCalendarEvent(
+              matchedEvent.id,
+              expectedSummary,
+              calendarLocation,
+              calendarDescription,
+              newDateStr
+            );
+            log(`Successfully updated Calendar event for Case #${legalCase.case_number} to ${newDateStr}.`);
+            updatedCount++;
+          }
+        } else {
+          // Event doesn't exist, create it!
+          log(`Discrepancy found: Case #${legalCase.case_number} has no event in Google Calendar. Pushing...`);
+          mismatchCount++;
+          
+          await addGoogleCalendarEvent(
+            expectedSummary,
+            calendarLocation,
+            calendarDescription,
+            newDateStr
+          );
+          log(`Successfully created Calendar event for Case #${legalCase.case_number} on ${newDateStr}.`);
+          insertedCount++;
+        }
+      }
+
+      if (mismatchCount === 0) {
+        log('Sync complete: No discrepancies found. Everything is fully synced!');
+      } else {
+        log(`Sync complete: Auto-resolved ${mismatchCount} discrepancy/discrepancies (created ${insertedCount}, updated ${updatedCount}).`);
+      }
+      
+      setSyncStatus('success');
+      setLastSyncTime(new Date());
+
+    } catch (err: any) {
+      console.error('Calendar Background Sync Error:', err);
+      log(`Sync error: ${err.message || err}`);
+      setSyncStatus('error');
+    } finally {
+      setSyncInProgress(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isConnected || !isAutoSyncEnabled || !token) return;
+
+    // Run first check immediately (after short delay) or wait for component mount
+    const initialTimeout = setTimeout(() => {
+      runCalendarSync(true); // run silently in the background initially
+    }, 3000);
+
+    // Periodic interval: run every 60 seconds
+    const intervalId = setInterval(() => {
+      runCalendarSync(true); // run silently
+    }, 60000);
+
+    return () => {
+      clearTimeout(initialTimeout);
+      clearInterval(intervalId);
+    };
+  }, [isConnected, isAutoSyncEnabled, token]);
 
   // Central refresh that fetches active sub tab data
   const refreshSubTabData = async () => {
@@ -397,6 +532,105 @@ export default function WorkspaceHub() {
               <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
               {loading ? 'Refreshing...' : 'Refresh'}
             </button>
+          </div>
+
+          {/* Case Hearing Calendar Sync Autopilot Section */}
+          <div className="bg-white border border-[#141414] p-6 space-y-4" id="calendar-sync-autopilot">
+            <div className="flex justify-between items-start flex-col sm:flex-row gap-4">
+              <div>
+                <h3 className="text-xl font-serif italic flex items-center gap-2">
+                  <Calendar size={18} className="text-[#141414]" /> Case Tracker Calendar Sync Hub
+                </h3>
+                <p className="text-xs opacity-60 mt-1">
+                  Periodic background runner checks your Case Tracker hear-dates and resolves differences automatically in your personal Google Calendar.
+                </p>
+              </div>
+              
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={isAutoSyncEnabled}
+                    onChange={e => {
+                      setIsAutoSyncEnabled(e.target.checked);
+                      if (e.target.checked) {
+                        setSyncLogs(prev => [`[${new Date().toLocaleTimeString()}] Enable automatic background checking (60s).`, ...prev]);
+                      } else {
+                        setSyncLogs(prev => [`[${new Date().toLocaleTimeString()}] Paused background checking.`, ...prev]);
+                      }
+                    }}
+                    className="h-4 w-4 border-[#141414] accent-[#141414]"
+                  />
+                  Auto-Sync
+                </label>
+
+                <button
+                  onClick={() => runCalendarSync(false)}
+                  disabled={syncInProgress}
+                  className="px-4 py-2 border border-[#141414] text-xs font-bold uppercase tracking-widest hover:bg-[#141414] hover:text-[#E4E3E0] transition-colors cursor-pointer flex items-center gap-1"
+                >
+                  <RefreshCw size={12} className={syncInProgress ? 'animate-spin' : ''} />
+                  Check & Sync Now
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-2">
+              <div className="border border-[#141414]/10 p-3 flex flex-col justify-between bg-gray-50">
+                <span className="text-[10px] uppercase opacity-40 font-bold tracking-widest">Scheduler State</span>
+                <span className="text-xs font-mono font-bold uppercase mt-1">
+                  {isAutoSyncEnabled ? (
+                    <span className="text-green-700 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" /> Active (Every 60s)
+                    </span>
+                  ) : (
+                    <span className="text-yellow-600">Paused</span>
+                  )}
+                </span>
+              </div>
+              
+              <div className="border border-[#141414]/10 p-3 flex flex-col justify-between bg-gray-50">
+                <span className="text-[10px] uppercase opacity-40 font-bold tracking-widest">Status</span>
+                <span className="text-xs font-mono font-bold uppercase mt-1">
+                  {syncInProgress ? (
+                    <span className="text-blue-600">Scanning...</span>
+                  ) : syncStatus === 'success' ? (
+                    <span className="text-green-700">Fully Synced</span>
+                  ) : syncStatus === 'error' ? (
+                    <span className="text-red-600">Failed</span>
+                  ) : (
+                    <span className="text-gray-400">Idle</span>
+                  )}
+                </span>
+              </div>
+
+              <div className="border border-[#141414]/10 p-3 flex flex-col justify-between bg-gray-50">
+                <span className="text-[10px] uppercase opacity-40 font-bold tracking-widest">Last Synced</span>
+                <span className="text-xs font-mono font-bold mt-1">
+                  {lastSyncTime ? lastSyncTime.toLocaleTimeString() : 'Never'}
+                </span>
+              </div>
+
+              <div className="border border-[#141414]/10 p-3 flex flex-col justify-between bg-gray-50">
+                <span className="text-[10px] uppercase opacity-40 font-bold tracking-widest font-serif">Logs Count</span>
+                <span className="text-xs font-mono font-bold mt-1">
+                  {syncLogs.length} Entries
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-[10px] uppercase font-bold tracking-widest text-[#141414] font-mono">Sync Activity Log Stream</label>
+              <div className="bg-[#141414] text-[#E4E3E0] p-4 text-xs font-mono rounded-xs h-32 overflow-y-auto space-y-1 scrollbar-thin">
+                {syncLogs.length === 0 ? (
+                  <p className="opacity-40 italic">Waiting for activity...</p>
+                ) : (
+                  syncLogs.map((entry, idx) => (
+                    <p key={idx} className="leading-relaxed whitespace-pre-wrap select-text">{entry}</p>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="bg-white border border-[#141414] p-6 min-h-[400px]">

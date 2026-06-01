@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import { Scale, Plus, Search, Calendar, FileText, Trash2, Edit2, Save, X, ExternalLink } from 'lucide-react';
-import { isGoogleConnected, sendGmailMessage } from '../services/googleWorkspace.ts';
+import { isGoogleConnected, sendGmailMessage, addGoogleCalendarEvent } from '../services/googleWorkspace.ts';
 
 interface LegalCase {
   id: string;
@@ -21,6 +21,7 @@ export default function CaseTracker() {
   const [editingCaseId, setEditingCaseId] = useState<string | null>(null);
   const [caseForm, setCaseForm] = useState({ case_number: '', court: '', status: 'open', next_hearing_date: '', notes: '' });
   const [autoSendEmail, setAutoSendEmail] = useState(true);
+  const [autoSyncCalendar, setAutoSyncCalendar] = useState(true);
   const [emailStatus, setEmailStatus] = useState<{ type: 'success' | 'error' | 'warning', msg: string } | null>(null);
 
   useEffect(() => {
@@ -54,9 +55,14 @@ export default function CaseTracker() {
           .then(res => res.json())
           .then(setCases);
 
-        // Automatically send a summary email via Gmail if checkbox is checked & hearing date is set/updated
-        if (autoSendEmail && isHearingDateUpdated) {
-          if (isGoogleConnected()) {
+        // Automatically sync to Google Workspace if workspace is connected
+        const syncMessages: string[] = [];
+        let hasError = false;
+        let hasSuccess = false;
+
+        if (isGoogleConnected()) {
+          // 1. Send Email Summary via Gmail
+          if (autoSendEmail && isHearingDateUpdated) {
             try {
               const recipient = user?.email || 'me';
               const subject = `[The Yard] Case Hearing Updated: Case #${caseForm.case_number}`;
@@ -82,25 +88,49 @@ In solidarity,
 The Yard Team`;
 
               await sendGmailMessage(recipient, subject, emailBody);
-              setEmailStatus({
-                type: 'success',
-                msg: `Successfully sent an automated hearing update email summary via Gmail to ${recipient === 'me' ? 'your linked Google email address' : recipient}!`
-              });
+              syncMessages.push(`Sent Gmail summary to ${recipient === 'me' ? 'your linked Google email address' : recipient}.`);
+              hasSuccess = true;
             } catch (err: any) {
               console.error('Error sending automatic hearing date Gmail:', err);
-              setEmailStatus({
-                type: 'error',
-                msg: `Hearing date updated successfully. However, we failed to send the Gmail summary: ${err.message || err}`
-              });
+              syncMessages.push(`Gmail sync failed: ${err.message || err}`);
+              hasError = true;
             }
-          } else {
+          }
+
+          // 2. Sync to Google Calendar
+          if (autoSyncCalendar && isHearingDateUpdated && caseForm.next_hearing_date) {
+            try {
+              const calendarSummary = `Hearing: Case #${caseForm.case_number}`;
+              const calendarLocation = caseForm.court;
+              const calendarDescription = `Case Tracker reference of Case #${caseForm.case_number} at ${caseForm.court}.\n\nNotes:\n${caseForm.notes || 'No notes provided.'}\n\nSynced automatically from The Yard.`;
+              
+              await addGoogleCalendarEvent(calendarSummary, calendarLocation, calendarDescription, caseForm.next_hearing_date);
+              syncMessages.push(`Google Calendar event synced successfully with automated reminders.`);
+              hasSuccess = true;
+            } catch (err: any) {
+              console.error('Error syncing hearing to Google Calendar:', err);
+              syncMessages.push(`Google Calendar sync failed: ${err.message || err}`);
+              hasError = true;
+            }
+          }
+
+          if (syncMessages.length > 0) {
             setEmailStatus({
-              type: 'warning',
-              msg: 'Hearing date updated successfully. However, the Gmail summary could not be sent because your Google Workspace is not connected. Go to the Workspace hub to link your account.'
+              type: hasError ? (hasSuccess ? 'warning' : 'error') : 'success',
+              msg: `Case hearing details saved. Integration status: ${syncMessages.join(' ')}`
             });
+          } else {
+            setEmailStatus(null);
           }
         } else {
-          setEmailStatus(null);
+          if ((autoSendEmail || autoSyncCalendar) && isHearingDateUpdated) {
+            setEmailStatus({
+              type: 'warning',
+              msg: 'Case hearing details saved. However, automated Gmail or Google Calendar sync could not run because your Google Workspace is not connected. Go to the Workspace hub to link your account.'
+            });
+          } else {
+            setEmailStatus(null);
+          }
         }
       }
     } catch (err) {
@@ -226,17 +256,31 @@ The Yard Team`;
                 type="date" value={caseForm.next_hearing_date} onChange={e => setCaseForm({...caseForm, next_hearing_date: e.target.value})}
                 className="w-full border border-[#141414] p-3 focus:outline-none focus:ring-2 focus:ring-[#141414]/10"
               />
-              <div className="mt-3 flex items-start gap-2">
-                <input 
-                  type="checkbox" 
-                  id="auto_send_email"
-                  checked={autoSendEmail} 
-                  onChange={e => setAutoSendEmail(e.target.checked)}
-                  className="mt-1 h-4 w-4 border-[#141414] accent-[#141414] cursor-pointer"
-                />
-                <label htmlFor="auto_send_email" className="text-xs uppercase tracking-wider font-semibold text-gray-700 cursor-pointer select-none">
-                  Automatically send hearing update email summary via Gmail
-                </label>
+              <div className="mt-3 space-y-2">
+                <div className="flex items-start gap-2">
+                  <input 
+                    type="checkbox" 
+                    id="auto_send_email"
+                    checked={autoSendEmail} 
+                    onChange={e => setAutoSendEmail(e.target.checked)}
+                    className="mt-1 h-4 w-4 border-[#141414] accent-[#141414] cursor-pointer"
+                  />
+                  <label htmlFor="auto_send_email" className="text-xs uppercase tracking-wider font-semibold text-gray-700 cursor-pointer select-none">
+                    Automatically send hearing update email summary via Gmail
+                  </label>
+                </div>
+                <div className="flex items-start gap-2">
+                  <input 
+                    type="checkbox" 
+                    id="auto_sync_calendar"
+                    checked={autoSyncCalendar} 
+                    onChange={e => setAutoSyncCalendar(e.target.checked)}
+                    className="mt-1 h-4 w-4 border-[#141414] accent-[#141414] cursor-pointer"
+                  />
+                  <label htmlFor="auto_sync_calendar" className="text-xs uppercase tracking-wider font-semibold text-gray-700 cursor-pointer select-none">
+                    Automatically sync hearing date to Google Calendar
+                  </label>
+                </div>
               </div>
             </div>
             <div>

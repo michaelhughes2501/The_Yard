@@ -19,6 +19,8 @@ export function getGoogleProvider() {
   provider.addScope('https://www.googleapis.com/auth/meetings.space.created');
   provider.addScope('https://www.googleapis.com/auth/contacts');
   provider.addScope('https://www.googleapis.com/auth/contacts.readonly');
+  provider.addScope('https://www.googleapis.com/auth/calendar');
+  provider.addScope('https://www.googleapis.com/auth/calendar.events');
   
   return provider;
 }
@@ -283,3 +285,116 @@ export async function listGoogleContacts() {
     };
   });
 }
+
+/**
+ * Google Calendar API Helpers
+ */
+export async function addGoogleCalendarEvent(summary: string, location: string, description: string, dateStr: string) {
+  const token = getGoogleAccessToken();
+  if (!token) throw new Error('Google Workspace not connected.');
+
+  const startDate = new Date(dateStr + "T00:00:00");
+  const endDate = new Date(startDate);
+  endDate.setDate(startDate.getDate() + 1);
+  const endDateStr = endDate.toISOString().split('T')[0];
+
+  const body = {
+    summary,
+    location,
+    description,
+    start: {
+      date: dateStr
+    },
+    end: {
+      date: endDateStr
+    },
+    reminders: {
+      useDefault: false,
+      overrides: [
+        { method: 'email', minutes: 1440 }, // 1 day before email reminder
+        { method: 'popup', minutes: 1440 },  // 1 day before popup reminder
+        { method: 'popup', minutes: 60 }     // 1 hour before popup reminder
+      ]
+    }
+  };
+
+  const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error?.message || 'Failed to create Google Calendar event.');
+  }
+
+  return await res.json();
+}
+
+export async function listGoogleCalendarEvents() {
+  const token = getGoogleAccessToken();
+  if (!token) throw new Error('Google Workspace not connected.');
+
+  const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events?maxResults=100', {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error?.message || 'Failed to list Google Calendar events.');
+  }
+
+  const data = await res.json();
+  return data.items || [];
+}
+
+export async function updateGoogleCalendarEvent(eventId: string, summary: string, location: string, description: string, dateStr: string) {
+  const token = getGoogleAccessToken();
+  if (!token) throw new Error('Google Workspace not connected.');
+
+  const startDate = new Date(dateStr + "T00:00:00");
+  const endDate = new Date(startDate);
+  endDate.setDate(startDate.getDate() + 1);
+  const endDateStr = endDate.toISOString().split('T')[0];
+
+  const body = {
+    summary,
+    location,
+    description,
+    start: {
+      date: dateStr
+    },
+    end: {
+      date: endDateStr
+    },
+    reminders: {
+      useDefault: false,
+      overrides: [
+        { method: 'email', minutes: 1440 }, // 1 day before email reminder
+        { method: 'popup', minutes: 1440 },  // 1 day before popup reminder
+        { method: 'popup', minutes: 60 }     // 1 hour before popup reminder
+      ]
+    }
+  };
+
+  const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error?.message || 'Failed to update Google Calendar event.');
+  }
+
+  return await res.json();
+}
+

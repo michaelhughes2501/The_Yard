@@ -335,9 +335,9 @@ function MainApp() {
       <main className="max-w-7xl mx-auto px-4 md:px-8 py-8">
         <motion.div
           key={activeTab}
-          initial={{ opacity: 0, x: 10 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.3 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
         >
           {renderContent()}
         </motion.div>
