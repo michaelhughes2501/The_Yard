@@ -536,6 +536,14 @@ async function startServer() {
     res.json({ success: true });
   });
 
+  app.put("/api/documents/:id", requireAuth, (req: any, res) => {
+    const { title, category } = req.body;
+    db.prepare("UPDATE documents SET title = COALESCE(?, title), category = COALESCE(?, category) WHERE id = ? AND user_id = ?").run(
+      title, category, req.params.id, req.userId
+    );
+    res.json({ success: true });
+  });
+
   app.get("/api/avatar/:docId", (req: any, res) => {
     try {
       const doc = db.prepare("SELECT file_type, file_data FROM documents WHERE id = ?").get(req.params.docId) as any;

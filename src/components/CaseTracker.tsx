@@ -332,13 +332,22 @@ The Yard Team`;
                       <Scale size={14} /> {c.court}
                     </div>
                   </div>
-                  <span className={`text-[10px] uppercase tracking-widest px-3 py-1.5 font-bold ${
-                    c.status === 'open' ? 'bg-blue-100 text-blue-800' :
-                    c.status === 'appealing' ? 'bg-purple-100 text-purple-800' :
-                    c.status === 'probation' ? 'bg-orange-100 text-orange-800' :
-                    'bg-green-100 text-green-800'
+                  <span className={`inline-flex items-center gap-1.5 text-xs font-semibold tracking-wider px-3 py-1.5 rounded-full border ${
+                    c.status === 'open' ? 'bg-blue-50 border-blue-200 text-blue-700' :
+                    c.status === 'appealing' ? 'bg-purple-50 border-purple-200 text-purple-700' :
+                    c.status === 'probation' ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                    'bg-green-50 border-green-200 text-green-700'
                   }`}>
-                    {c.status}
+                    <span className={`w-2 h-2 rounded-full ${
+                      c.status === 'open' ? 'bg-blue-500 animate-pulse' :
+                      c.status === 'appealing' ? 'bg-purple-500' :
+                      c.status === 'probation' ? 'bg-amber-500' :
+                      'bg-green-500'
+                    }`} />
+                    {c.status === 'open' ? 'Open / Pending' :
+                     c.status === 'appealing' ? 'Appealing' :
+                     c.status === 'probation' ? 'On Probation' :
+                     'Closed / Resolved'}
                   </span>
                 </div>
                 
