@@ -129,4 +129,15 @@ export interface AppDocument {
   file_name: string;
   file_type: string;
   created_at: string;
+  file_size?: number;
+}
+
+export interface Testimonial {
+  id: string;
+  user_id: string | null;
+  author_name: string;
+  content: string;
+  role?: string;
+  avatar_url?: string;
+  created_at?: string;
 }

@@ -217,6 +217,16 @@ db.exec(`
     FOREIGN KEY(receiver_id) REFERENCES users(id),
     UNIQUE(requester_id, receiver_id)
   );
+  CREATE TABLE IF NOT EXISTS testimonials (
+    id TEXT PRIMARY KEY,
+    user_id TEXT,
+    author_name TEXT,
+    content TEXT,
+    role TEXT,
+    avatar_url TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id)
+  );
 `);
 
 async function startServer() {
@@ -507,9 +517,78 @@ async function startServer() {
     res.json({ success: true, id });
   });
 
+  // Testimonials & Success Stories Routes
+  app.get("/api/testimonials", (req, res) => {
+    try {
+      let rows = db.prepare("SELECT * FROM testimonials ORDER BY created_at DESC").all() as any[];
+      if (rows.length === 0) {
+        // Seed default inspiring testimonials
+        const seeds = [
+          {
+            id: crypto.randomUUID(),
+            user_id: null,
+            author_name: "Marcus Vance",
+            content: "After serving 12 years, I felt completely lost. Through The Yard, I found a coding mentor who guided me through stack certifications. Today, I'm a full-time software engineer at a logistics firm. Re-entry is hard, but we don't have to walk it alone.",
+            role: "Alumnus & Software Engineer",
+            avatar_url: null,
+            created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
+          },
+          {
+            id: crypto.randomUUID(),
+            user_id: null,
+            author_name: "David Chen",
+            content: "Connecting with an accountability partner and using the tools was made simple here. The Legal Tools tab helped me understand my rights, and the Mentorship program kept me grounded. Now celebrating 3 years of freedom, running a construction contracting business.",
+            role: "Construction Business Owner",
+            avatar_url: null,
+            created_at: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString()
+          },
+          {
+            id: crypto.randomUUID(),
+            user_id: null,
+            author_name: "Carlos Mendez",
+            content: "Finding felony-friendly housing was my biggest hurdle. Through the shared opportunities here, I moved into stable transitional housing within two weeks of release. Now I'm working as a peer navigator, helping others coming home.",
+            role: "Lead Peer Navigator",
+            avatar_url: null,
+            created_at: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString()
+          }
+        ];
+        for (const seed of seeds) {
+          db.prepare("INSERT INTO testimonials (id, user_id, author_name, content, role, avatar_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(
+            seed.id, seed.user_id, seed.author_name, seed.content, seed.role, seed.avatar_url, seed.created_at
+          );
+        }
+        rows = db.prepare("SELECT * FROM testimonials ORDER BY created_at DESC").all() as any[];
+      }
+      res.json(rows);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/testimonials", requireAuth, (req: any, res) => {
+    const { author_name, content, role } = req.body;
+    if (!content) {
+      return res.status(400).json({ error: "Content is required" });
+    }
+    try {
+      const userObj = db.prepare("SELECT username, avatar_url FROM users WHERE id = ?").get(req.userId) as any;
+      const name = author_name || (userObj ? userObj.username : "Anonymous");
+      const avatar = userObj ? userObj.avatar_url : null;
+      const cleanRole = role || "Alumnus";
+
+      const id = crypto.randomUUID();
+      db.prepare("INSERT INTO testimonials (id, user_id, author_name, content, role, avatar_url) VALUES (?, ?, ?, ?, ?, ?)").run(
+        id, req.userId, name, content, cleanRole, avatar
+      );
+      res.json({ success: true, id });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Documents Routes
   app.get("/api/documents", requireAuth, (req: any, res) => {
-    const docs = db.prepare("SELECT id, title, category, file_name, file_type, created_at FROM documents WHERE user_id = ? ORDER BY created_at DESC").all(req.userId);
+    const docs = db.prepare("SELECT id, title, category, file_name, file_type, created_at, LENGTH(file_data) as file_size FROM documents WHERE user_id = ? ORDER BY created_at DESC").all(req.userId);
     res.json(docs);
   });
 

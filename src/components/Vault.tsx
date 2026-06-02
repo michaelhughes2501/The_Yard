@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../AuthContext';
 import { AppDocument } from '../types';
-import { FileText, Upload, Trash2, Download, File, FileImage, FileArchive, Camera, RefreshCw, Check, X, Sparkles, AlertCircle, Folder, FolderPlus, FolderOpen, Edit3 } from 'lucide-react';
+import { FileText, Upload, Trash2, Download, File, FileImage, FileArchive, Camera, RefreshCw, Check, X, Sparkles, AlertCircle, Folder, FolderPlus, FolderOpen, Edit3, Info } from 'lucide-react';
 import ConfirmationDialog from './ConfirmationDialog';
 
 export default function Vault() {
@@ -41,6 +41,13 @@ export default function Vault() {
   const [editTitle, setEditTitle] = useState('');
   const [editCategory, setEditCategory] = useState('');
   const [editDocOpen, setEditDocOpen] = useState(false);
+
+  // Drag and Drop States
+  const [draggedDoc, setDraggedDoc] = useState<AppDocument | null>(null);
+  const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
+
+  // Folder info modal state
+  const [selectedFolderInfo, setSelectedFolderInfo] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -185,6 +192,61 @@ export default function Vault() {
     } catch (err: any) {
       alert(err.message || err);
     }
+  };
+
+  const handleMoveDocument = async (doc: AppDocument, targetCategory: string) => {
+    // Optimistic UI update: instantly update the local state for a smooth feel
+    setDocuments(prev => prev.map(d => d.id === doc.id ? { ...d, category: targetCategory } : d));
+
+    try {
+      const res = await fetch(`/api/documents/${doc.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          title: doc.title,
+          category: targetCategory
+        })
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to update document category");
+      }
+    } catch (err: any) {
+      console.error("Error moving document category:", err);
+      // Revert optimism if error occurs
+      fetchDocuments();
+      alert("Failed to move document: " + (err.message || err));
+    } finally {
+      fetchDocuments();
+    }
+  };
+
+  const getFolderStats = (folderName: string) => {
+    const folderDocs = folderName === 'All' 
+      ? documents 
+      : documents.filter(d => d.category === folderName);
+
+    const count = folderDocs.length;
+    let totalBytes = 0;
+    folderDocs.forEach(d => {
+      if (d.file_size) {
+        totalBytes += Math.round(d.file_size * 0.75);
+      }
+    });
+
+    return { count, totalBytes };
+  };
+
+  const formatBytes = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1000; // Let's use standard decimal KB or binary 1024. Both are fine. 1000 is clean! Let's do standard 1024 for precision.
+    const binaryK = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(binaryK));
+    return parseFloat((bytes / Math.pow(binaryK, i)).toFixed(1)) + ' ' + sizes[i];
   };
 
   useEffect(() => {
@@ -565,7 +627,7 @@ export default function Vault() {
           <label className="text-xs uppercase tracking-widest font-bold text-[#141414]">Folders & Categories</label>
           <span className="text-[10px] text-gray-500 font-mono">Click folder to filter documents</span>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+        <div id="folder-list-container" className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
           
           {/* 'All' Folder card */}
           <div 
@@ -596,14 +658,41 @@ export default function Vault() {
             const isSelected = filterCategory === folder;
             const isCustom = customCategories.includes(folder);
             const isEditing = editingFolderOriginalName === folder;
+            const isDragOver = dragOverFolder === folder;
             
             return (
               <div 
                 key={folder}
-                className={`border border-[#141414] p-4 flex flex-col justify-between h-32 select-none relative group transition-all ${
-                  isSelected 
-                    ? 'bg-[#141414] text-[#E4E3E0] shadow-sm transform scale-[1.02]' 
-                    : 'bg-white text-[#141414] hover:bg-[#141414]/5'
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (draggedDoc && draggedDoc.category !== folder) {
+                    setDragOverFolder(folder);
+                  }
+                }}
+                onDragLeave={() => {
+                  setDragOverFolder(null);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOverFolder(null);
+                  if (draggedDoc) {
+                    if (draggedDoc.category !== folder) {
+                      handleMoveDocument(draggedDoc, folder);
+                    }
+                  } else {
+                    const docId = e.dataTransfer.getData("text/plain");
+                    const foundDoc = documents.find(d => d.id === docId);
+                    if (foundDoc && foundDoc.category !== folder) {
+                      handleMoveDocument(foundDoc, folder);
+                    }
+                  }
+                }}
+                className={`border p-4 flex flex-col justify-between h-32 select-none relative group transition-all duration-200 ${
+                  isDragOver
+                    ? 'border-2 border-dashed border-[#141414] bg-amber-100/90 text-[#141414] scale-105 shadow-md z-10'
+                    : isSelected 
+                      ? 'border-[#141414] bg-[#141414] text-[#E4E3E0] shadow-sm transform scale-[1.02]' 
+                      : 'border-[#141414] bg-white text-[#141414] hover:bg-[#141414]/5'
                 }`}
                 style={{ cursor: isEditing ? 'default' : 'pointer' }}
                 onClick={() => {
@@ -618,23 +707,48 @@ export default function Vault() {
                       <div className="flex opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity absolute top-2 right-2 gap-1 bg-white border border-[#141414] p-1 shadow-sm rounded">
                         <button
                           onClick={() => {
+                            setSelectedFolderInfo(folder);
+                          }}
+                          className="p-1 hover:bg-gray-100 text-[#141414] rounded transition-colors"
+                          title="Folder Storage Info"
+                        >
+                          <Info size={11} className="text-[#141414]" />
+                        </button>
+                        <button
+                          onClick={() => {
                             setEditingFolderOriginalName(folder);
                             setEditingFolderNameValue(folder);
                           }}
                           className="p-1 hover:bg-gray-100 text-[#141414] rounded transition-colors"
                           title="Rename Folder"
                         >
-                          <Edit3 size={11} />
+                          <Edit3 size={11} className="text-[#141414]" />
                         </button>
                         <button
                           onClick={() => handleDeleteFolder(folder)}
                           className="p-1 hover:bg-red-50 text-red-600 rounded transition-colors"
                           title="Delete Folder"
                         >
-                          <Trash2 size={11} />
+                          <Trash2 size={11} className="text-red-600" />
                         </button>
                       </div>
                     )}
+                    
+                    {isCustom && !isEditing && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedFolderInfo(folder);
+                        }}
+                        className={`p-1 rounded transition-colors flex items-center justify-center ${
+                          isSelected ? 'hover:bg-white/10 text-[#E4E3E0]' : 'hover:bg-[#141414]/5 text-[#141414]'
+                        }`}
+                        title="Storage Info (Click to view)"
+                      >
+                        <Info size={11} className="opacity-75" />
+                      </button>
+                    )}
+
                     <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border ${
                       isSelected ? 'bg-white/10 border-white/20' : 'bg-[#141414]/5 border-[#141414]/10'
                     }`}>
@@ -736,9 +850,14 @@ export default function Vault() {
 
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <h3 className="text-xs uppercase tracking-widest font-bold flex items-center gap-2">
-            <FileText size={16} /> Your Documents
-          </h3>
+          <div className="space-y-1">
+            <h3 className="text-xs uppercase tracking-widest font-bold flex items-center gap-2">
+              <FileText size={16} /> Your Documents
+            </h3>
+            <p className="text-[10px] text-gray-500 font-mono">
+              💡 Tip: Click & drag your files directly into any folder above to reorganize
+            </p>
+          </div>
           <div className="flex items-center gap-2">
             <label className="text-xs uppercase tracking-widest font-bold opacity-60">Filter:</label>
             <select 
@@ -764,7 +883,21 @@ export default function Vault() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredDocuments.map(doc => (
-              <div key={doc.id} className="bg-white border border-[#141414] p-4 flex flex-col">
+              <div 
+                key={doc.id} 
+                draggable="true"
+                onDragStart={(e) => {
+                  setDraggedDoc(doc);
+                  e.dataTransfer.setData("text/plain", doc.id);
+                  e.dataTransfer.effectAllowed = "move";
+                }}
+                onDragEnd={() => {
+                  setDraggedDoc(null);
+                }}
+                className={`bg-white border border-[#141414] p-4 flex flex-col cursor-grab active:cursor-grabbing transition-all duration-200 hover:shadow-sm ${
+                  draggedDoc?.id === doc.id ? 'opacity-40 border-dashed scale-95' : ''
+                }`}
+              >
                 <div className="flex items-start gap-3 mb-4">
                   <div className="p-3 bg-[#E4E3E0] rounded-sm">
                     {getFileIcon(doc.file_type)}
@@ -1154,6 +1287,51 @@ export default function Vault() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Folder Storage Info Modal */}
+      {selectedFolderInfo && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#E4E3E0] text-[#141414] border-2 border-[#141414] w-full max-w-sm p-6 shadow-2xl relative animate-in fade-in duration-200">
+            <button 
+              onClick={() => setSelectedFolderInfo(null)}
+              className="absolute top-4 right-4 p-1 hover:bg-[#141414]/5 transition-colors rounded text-[#141414]"
+              title="Close"
+            >
+              <X size={20} />
+            </button>
+            
+            <div className="flex items-center gap-3 mb-4 pr-6">
+              <FolderOpen size={28} className="text-[#141414] opacity-80 shrink-0" />
+              <h3 className="text-2xl font-serif italic text-[#141414] truncate">{getCategoryLabel(selectedFolderInfo)}</h3>
+            </div>
+            
+            <p className="text-xs uppercase tracking-widest font-bold text-gray-500 mb-6 font-mono">Folder Storage Metrics</p>
+
+            <div className="space-y-4 border-t border-b border-[#141414]/10 py-6 mb-6">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium">Number of Files:</span>
+                <span className="font-mono font-bold text-lg">{getFolderStats(selectedFolderInfo).count}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium">Total Storage Size:</span>
+                <span className="font-mono font-bold text-lg text-emerald-800">
+                  {formatBytes(getFolderStats(selectedFolderInfo).totalBytes)}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedFolderInfo(null)}
+                className="w-full sm:w-auto px-8 py-2 bg-[#141414] text-[#E4E3E0] hover:opacity-90 uppercase tracking-widest text-[10px] font-bold border border-[#141414]"
+              >
+                Close Details
+              </button>
+            </div>
           </div>
         </div>
       )}

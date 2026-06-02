@@ -1,16 +1,116 @@
 import React, { useState, useEffect } from 'react';
-import { Search, UserPlus, MapPin, History, UserCheck } from 'lucide-react';
-import { motion } from 'motion/react';
+import { Search, UserPlus, MapPin, History, UserCheck, Sparkles, Quote, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../AuthContext';
-import { User } from '../types';
+import { User, Testimonial } from '../types';
 import { calculateRelevanceScore } from '../utils/searchUtils';
+
+function AIAvatar({ name, className = "w-12 h-12" }: { name: string; className?: string }) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+
+  const palettes = [
+    { bg: "#F1EBE4", primary: "#8C6239", secondary: "#D9B48F", dark: "#2C1A10", eyeType: "round" },
+    { bg: "#E2ECE9", primary: "#5A8F76", secondary: "#A3D2B8", dark: "#1C352D", eyeType: "square" },
+    { bg: "#EBF2FA", primary: "#4A90E2", secondary: "#ADC9E6", dark: "#162E4E", eyeType: "round" },
+    { bg: "#FBF2F6", primary: "#D63031", secondary: "#FAB1A0", dark: "#2D3436", eyeType: "star" },
+    { bg: "#FAF3E0", primary: "#E58E26", secondary: "#F8C291", dark: "#1E272C", eyeType: "round" },
+    { bg: "#F7F5FC", primary: "#6C5CE7", secondary: "#A29BFE", dark: "#2D3436", eyeType: "shades" },
+    { bg: "#FFF2F2", primary: "#E84393", secondary: "#FF7675", dark: "#2D3436", eyeType: "round" }
+  ];
+
+  const design = palettes[Math.abs(hash) % palettes.length];
+  const eyeRadius = Math.abs(hash) % 2 === 0 ? 8 : 6;
+  const mouthWidth = 18 + (Math.abs(hash * 3) % 18);
+
+  return (
+    <svg className={`${className} rounded border border-[#141414] shadow-sm shrink-0`} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="100" height="100" fill={design.bg} />
+      <circle cx="50" cy="50" r="38" className="opacity-15" fill={design.primary} />
+      <path d={`M15 95 C 15 70, 85 70, 85 95`} stroke={design.dark} strokeWidth="4" fill={design.secondary} />
+      
+      {design.eyeType === "round" && (
+        <>
+          <circle cx="36" cy="46" r={eyeRadius} fill={design.primary} stroke={design.dark} strokeWidth="3" />
+          <circle cx="64" cy="46" r={eyeRadius} fill={design.primary} stroke={design.dark} strokeWidth="3" />
+          <line x1="45" y1="46" x2="55" y2="46" stroke={design.dark} strokeWidth="3" />
+        </>
+      )}
+
+      {design.eyeType === "square" && (
+        <>
+          <rect x="26" y="38" width="16" height="14" fill={design.primary} stroke={design.dark} strokeWidth="3" />
+          <rect x="58" y="38" width="16" height="14" fill={design.primary} stroke={design.dark} strokeWidth="3" />
+          <line x1="42" y1="45" x2="58" y2="45" stroke={design.dark} strokeWidth="3" />
+        </>
+      )}
+
+      {design.eyeType === "star" && (
+        <>
+          <polygon points="36,36 39,44 47,44 40,49 43,57 36,52 29,57 32,49 25,44 33,44" fill={design.primary} stroke={design.dark} strokeWidth="2" />
+          <polygon points="64,36 67,44 75,44 68,49 71,57 64,52 57,57 60,49 53,44 61,44" fill={design.primary} stroke={design.dark} strokeWidth="2" />
+          <line x1="43" y1="45" x2="57" y2="45" stroke={design.dark} strokeWidth="3" />
+        </>
+      )}
+
+      {design.eyeType === "shades" && (
+        <>
+          <path d="M22 36 h56 v12 H62 L58 44 H42 L38 48 H22 Z" fill={design.dark} stroke={design.primary} strokeWidth="2" />
+          <line x1="28" y1="40" x2="38" y2="40" stroke={design.bg} strokeWidth="2" opacity="0.8" />
+        </>
+      )}
+
+      {Math.abs(hash) % 3 === 0 ? (
+        <path d="M12 35 C 25 15, 75 15, 88 35 L 94 38 L 6 38 Z" fill={design.dark} stroke={design.dark} strokeWidth="2" />
+      ) : Math.abs(hash) % 3 === 1 ? (
+        <path d="M25 35 Q 50 10 75 35 Q 50 22 25 35" fill={design.primary} stroke={design.dark} strokeWidth="2" />
+      ) : (
+        <rect x="25" y="22" width="50" height="10" rx="3" fill={design.primary} stroke={design.dark} strokeWidth="2" />
+      )}
+
+      <path d={`M${50 - mouthWidth / 2} 70 Q 50 ${70 + (Math.abs(hash) % 10)} ${50 + mouthWidth / 2} 70`} stroke={design.dark} strokeWidth="4" strokeLinecap="round" />
+      
+      <polygon points="12,12 14,8 16,12 20,13 16,14 14,18 12,14 8,13" fill={design.primary} opacity="0.8" />
+      <polygon points="86,16 88,13 90,16 93,17 90,18 88,21 86,18 83,17" fill={design.dark} opacity="0.6" />
+    </svg>
+  );
+}
 
 export default function TheYard() {
   const [users, setUsers] = useState<User[]>([]);
   const [search, setSearch] = useState('');
   const [connectedIds, setConnectedIds] = useState<string[]>([]);
   const [filterMode, setFilterMode] = useState<'all' | 'connections'>('all');
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+
+  // Testimonials and Success Stories states
+  const [testimonials, setTestimonials] = useState<Testimonial[]>([]);
+  const [showStoryModal, setShowStoryModal] = useState(false);
+  const [isSubmittingStory, setIsSubmittingStory] = useState(false);
+  const [storyForm, setStoryForm] = useState({ author_name: '', role: '', content: '' });
+  const [storyIndex, setStoryIndex] = useState(0);
+
+  const fetchTestimonials = () => {
+    fetch('/api/testimonials')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setTestimonials(data);
+        }
+      })
+      .catch(console.error);
+  };
+
+  useEffect(() => {
+    if (user) {
+      setStoryForm(prev => ({
+        ...prev,
+        author_name: user.username || ''
+      }));
+    }
+  }, [user]);
 
   useEffect(() => {
     // Fetch all users list
@@ -38,7 +138,45 @@ export default function TheYard() {
       }
     })
     .catch(console.error);
+
+    // Fetch testimonials
+    fetchTestimonials();
   }, [token]);
+
+  const handleSubmitStory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!storyForm.content.trim()) {
+      alert("Please write your success story details.");
+      return;
+    }
+    setIsSubmittingStory(true);
+    try {
+      const res = await fetch('/api/testimonials', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(storyForm)
+      });
+      if (res.ok) {
+        setStoryForm({ author_name: user?.username || '', role: '', content: '' });
+        setShowStoryModal(false);
+        fetchTestimonials();
+        // Reset slider to the newest story
+        setStoryIndex(0);
+        alert('Thank you for sharing your story of hope! It has been posted to the Home Feed.');
+      } else {
+        const errData = await res.json();
+        alert(errData.error || 'Failed to submit success story.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('An error occurred during submission.');
+    } finally {
+      setIsSubmittingStory(false);
+    }
+  };
 
   const handleSendKite = async (receiverId: string, name: string) => {
     const content = prompt(`Send a kite to ${name}:`);
@@ -116,6 +254,98 @@ export default function TheYard() {
           Find the people you walked the line with. Search by facility, name, or location.
         </p>
       </header>
+
+      {/* Testimonials Banner / Success Stories */}
+      {testimonials.length > 0 && (
+        <div className="bg-[#141414] text-[#E4E3E0] border border-[#141414] p-8 space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-[#E4E3E0]/20 pb-4">
+            <div className="space-y-1">
+              <span className="text-[10px] uppercase font-mono tracking-widest text-[#E4E3E0]/60 flex items-center gap-1.5 font-bold">
+                <Sparkles size={12} className="text-[#E4E3E0] opacity-80" /> Voices of Triumph // Success Stories
+              </span>
+              <h3 className="text-3xl font-serif italic">Community Milestones</h3>
+            </div>
+            <button
+              onClick={() => setShowStoryModal(true)}
+              className="px-4 py-2 border border-[#E4E3E0]/30 hover:border-[#E4E3E0] text-xs font-bold uppercase tracking-widest font-mono hover:bg-white hover:text-[#141414] transition-all flex items-center gap-2 cursor-pointer"
+            >
+              <Plus size={14} /> + Share Your Story
+            </button>
+          </div>
+
+          {/* Testimonial slider view */}
+          <div className="relative">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {(() => {
+                const activeStoriesToShow = [];
+                if (testimonials.length > 0) {
+                  activeStoriesToShow.push(testimonials[storyIndex]);
+                  if (testimonials.length > 1) {
+                    const secondIdx = (storyIndex + 1) % testimonials.length;
+                    activeStoriesToShow.push(testimonials[secondIdx]);
+                  }
+                }
+
+                return activeStoriesToShow.map((test, index) => (
+                  <motion.div
+                    key={test.id + "-" + index}
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="bg-white/5 border border-white/10 p-6 flex flex-col justify-between space-y-6 hover:border-white/20 transition-all group"
+                  >
+                    <div className="space-y-3">
+                      <Quote className="text-[#E4E3E0]/30 rotate-180 shrink-0" size={24} />
+                      <p className="text-sm font-serif italic leading-relaxed text-[#E4E3E0]/90">
+                        "{test.content}"
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-4 pt-4 border-t border-white/10">
+                      {test.avatar_url ? (
+                        <img
+                          src={test.avatar_url}
+                          alt={test.author_name}
+                          className="w-12 h-12 rounded border border-[#141414] object-cover shrink-0"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <AIAvatar name={test.author_name} className="w-12 h-12" />
+                      )}
+                      <div>
+                        <h4 className="font-serif italic font-bold text-[#E4E3E0]">{test.author_name}</h4>
+                        <span className="text-[10px] font-mono uppercase tracking-wider text-[#E4E3E0]/50 font-bold block">
+                          {test.role || "Community Alumnus"}
+                        </span>
+                      </div>
+                    </div>
+                  </motion.div>
+                ));
+              })()}
+            </div>
+
+            {/* Slider navigations */}
+            {testimonials.length > 2 && (
+              <div className="flex justify-end gap-2 mt-4 pt-2">
+                <button
+                  onClick={() => setStoryIndex(prev => (prev - 1 + testimonials.length) % testimonials.length)}
+                  className="p-2 border border-white/10 hover:border-white/30 text-[#E4E3E0] hover:bg-white/10 transition-all text-xs cursor-pointer"
+                  title="Previous Success Story"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <button
+                  onClick={() => setStoryIndex(prev => (prev + 1) % testimonials.length)}
+                  className="p-2 border border-white/10 hover:border-white/30 text-[#E4E3E0] hover:bg-white/10 transition-all text-xs cursor-pointer"
+                  title="Next Success Story"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="space-y-6">
         <div className="relative">
@@ -221,6 +451,104 @@ export default function TheYard() {
           );
         })}
       </div>
+
+      {/* Share Your Success Story Modal */}
+      <AnimatePresence>
+        {showStoryModal && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-[#E4E3E0] text-[#141414] border-2 border-[#141414] w-full max-w-xl p-8 shadow-2xl relative"
+            >
+              <button
+                onClick={() => setShowStoryModal(false)}
+                className="absolute top-4 right-4 p-2 hover:bg-[#141414]/10 transition-colors rounded text-[#141414] cursor-pointer"
+                title="Close"
+              >
+                <X size={20} />
+              </button>
+
+              <div className="space-y-2 mb-6">
+                <div className="flex items-center gap-2 text-xs uppercase tracking-widest font-mono font-bold text-gray-500">
+                  <Sparkles size={14} className="text-[#141414]" /> Voices of Triumph
+                </div>
+                <h3 className="text-3xl font-serif italic text-[#141414]">Share Your Re-entry Story</h3>
+                <p className="text-xs opacity-70">
+                  Your journey of perseverance and triumph serves as an encouraging lighthouse of hope for brothers currently returning home.
+                </p>
+              </div>
+
+              <form onSubmit={handleSubmitStory} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase tracking-wider font-bold font-mono">Your Name / Alias</label>
+                    <input
+                      type="text"
+                      required
+                      value={storyForm.author_name}
+                      onChange={e => setStoryForm(prev => ({ ...prev, author_name: e.target.value }))}
+                      placeholder="e.g. Marcus V."
+                      className="w-full bg-white border border-[#141414] p-3 text-sm focus:outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase tracking-wider font-bold font-mono">Your Role or Milestone</label>
+                    <input
+                      type="text"
+                      value={storyForm.role}
+                      onChange={e => setStoryForm(prev => ({ ...prev, role: e.target.value }))}
+                      placeholder="e.g. Alumnus & Junior Dev, Mentor, Business Owner"
+                      className="w-full bg-white border border-[#141414] p-3 text-sm focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase tracking-wider font-bold font-mono">Your Success Story & Testimony</label>
+                  <textarea
+                    required
+                    rows={5}
+                    value={storyForm.content}
+                    onChange={e => setStoryForm(prev => ({ ...prev, content: e.target.value }))}
+                    placeholder="Describe your breakthrough. What did you achieve after release? How did navigation tools or support networks help? Empower the community with your steps."
+                    className="w-full bg-white border border-[#141414] p-3 text-sm focus:outline-none resize-none leading-relaxed"
+                  />
+                </div>
+
+                {/* Dynamic AI-Generated Profile Avatar Preview */}
+                <div className="bg-white/40 border border-[#141414]/10 p-4 flex items-center gap-4 rounded-sm">
+                  <AIAvatar name={storyForm.author_name || "Guest"} className="w-12 h-12" />
+                  <div>
+                    <h5 className="text-[10px] uppercase tracking-widest font-bold text-gray-500 font-mono">Bespoke AI Avatar Preview</h5>
+                    <p className="text-[11px] text-gray-600 font-sans mt-0.5">
+                      Based on your name, a beautiful bespoke retro geometric portrait art is generated deterministically!
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-[#141414]/10">
+                  <button
+                    type="button"
+                    onClick={() => setShowStoryModal(false)}
+                    className="px-6 py-3 border border-[#141414] text-[10px] font-bold uppercase tracking-widest font-mono hover:bg-white transition-all cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingStory}
+                    className="px-8 py-3 bg-[#141414] text-[#E4E3E0] text-[10px] font-bold uppercase tracking-widest font-mono hover:opacity-90 disabled:opacity-50 transition-all flex items-center gap-2 cursor-pointer"
+                  >
+                    {isSubmittingStory ? "Sharing..." : "Post Success Story"}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
