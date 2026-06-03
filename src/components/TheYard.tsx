@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, UserPlus, MapPin, History, UserCheck, Sparkles, Quote, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
+import { Search, UserPlus, MapPin, History, UserCheck, Sparkles, Quote, ChevronLeft, ChevronRight, Plus, X, Heart, MessageSquare, Share2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../AuthContext';
 import { User, Testimonial } from '../types';
@@ -92,6 +92,96 @@ export default function TheYard() {
   const [storyForm, setStoryForm] = useState({ author_name: '', role: '', content: '' });
   const [storyIndex, setStoryIndex] = useState(0);
 
+  // Share States & Methods
+  const [sharedStoryId, setSharedStoryId] = useState<string | null>(null);
+  const [copiedStoryId, setCopiedStoryId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const storyParam = params.get('story');
+    if (storyParam) {
+      setSharedStoryId(storyParam);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (sharedStoryId && testimonials.length > 0) {
+      const foundIndex = testimonials.findIndex(t => t.id === sharedStoryId);
+      if (foundIndex !== -1) {
+        setStoryIndex(foundIndex);
+        setExpandedComments(prev => ({
+          ...prev,
+          [sharedStoryId]: true
+        }));
+      }
+    }
+  }, [sharedStoryId, testimonials]);
+
+  const handleShareStory = (id: string) => {
+    const shareUrl = `${window.location.origin}${window.location.pathname}?story=${id}`;
+    navigator.clipboard.writeText(shareUrl)
+      .then(() => {
+        setCopiedStoryId(id);
+        setTimeout(() => {
+          setCopiedStoryId(null);
+        }, 2500);
+      })
+      .catch(err => {
+        console.error('Failed to copy share link:', err);
+      });
+  };
+
+  // Comments states
+  const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
+  const [newCommentTexts, setNewCommentTexts] = useState<Record<string, string>>({});
+  const [isSubmittingComment, setIsSubmittingComment] = useState<Record<string, boolean>>({});
+
+  const toggleComments = (id: string) => {
+    setExpandedComments(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
+  };
+
+  const handleCommentTextChange = (id: string, text: string) => {
+    setNewCommentTexts(prev => ({
+      ...prev,
+      [id]: text
+    }));
+  };
+
+  const handlePostComment = async (testimonialId: string) => {
+    const text = newCommentTexts[testimonialId] || '';
+    if (!text.trim()) return;
+
+    setIsSubmittingComment(prev => ({ ...prev, [testimonialId]: true }));
+    try {
+      const res = await fetch(`/api/testimonials/${testimonialId}/comments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ content: text.trim(), author_name: user?.username || '' })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        // Update testimonials list with new comments
+        setTestimonials(prev => prev.map(t => t.id === testimonialId ? { ...t, comments: data.comments } : t));
+        // Clear input
+        setNewCommentTexts(prev => ({ ...prev, [testimonialId]: '' }));
+      } else {
+        const errData = await res.json();
+        alert(errData.error || 'Failed to post comment.');
+      }
+    } catch (err) {
+      console.error('Error posting comment:', err);
+      alert('An error occurred while posting comment.');
+    } finally {
+      setIsSubmittingComment(prev => ({ ...prev, [testimonialId]: false }));
+    }
+  };
+
   const fetchTestimonials = () => {
     fetch('/api/testimonials')
       .then(res => res.json())
@@ -175,6 +265,27 @@ export default function TheYard() {
       alert('An error occurred during submission.');
     } finally {
       setIsSubmittingStory(false);
+    }
+  };
+
+  const handleLikeTestimonial = async (id: string) => {
+    try {
+      const res = await fetch(`/api/testimonials/${id}/like`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTestimonials(prev => prev.map(t => t.id === id ? { ...t, likes_count: data.likes_count } : t));
+      } else {
+        const errData = await res.json();
+        alert(errData.error || 'Failed to celebrate this story.');
+      }
+    } catch (err) {
+      console.error('Error celebrating testimonial:', err);
     }
   };
 
@@ -286,42 +397,171 @@ export default function TheYard() {
                   }
                 }
 
-                return activeStoriesToShow.map((test, index) => (
-                  <motion.div
-                    key={test.id + "-" + index}
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.3 }}
-                    className="bg-white/5 border border-white/10 p-6 flex flex-col justify-between space-y-6 hover:border-white/20 transition-all group"
-                  >
-                    <div className="space-y-3">
-                      <Quote className="text-[#E4E3E0]/30 rotate-180 shrink-0" size={24} />
-                      <p className="text-sm font-serif italic leading-relaxed text-[#E4E3E0]/90">
-                        "{test.content}"
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-4 pt-4 border-t border-white/10">
-                      {test.avatar_url ? (
-                        <img
-                          src={test.avatar_url}
-                          alt={test.author_name}
-                          className="w-12 h-12 rounded border border-[#141414] object-cover shrink-0"
-                          referrerPolicy="no-referrer"
-                        />
-                      ) : (
-                        <AIAvatar name={test.author_name} className="w-12 h-12" />
-                      )}
-                      <div>
-                        <h4 className="font-serif italic font-bold text-[#E4E3E0]">{test.author_name}</h4>
-                        <span className="text-[10px] font-mono uppercase tracking-wider text-[#E4E3E0]/50 font-bold block">
-                          {test.role || "Community Alumnus"}
-                        </span>
+                return activeStoriesToShow.map((test, index) => {
+                  const isShared = test.id === sharedStoryId;
+                  return (
+                    <motion.div
+                      key={test.id + "-" + index}
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.3 }}
+                      className={`bg-white/5 border p-6 flex flex-col justify-between space-y-6 hover:border-white/20 transition-all group ${
+                        isShared
+                          ? 'border-amber-400/80 shadow-[0_0_15px_rgba(245,158,11,0.15)] ring-1 ring-amber-400/30'
+                          : 'border-white/10'
+                      }`}
+                    >
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-start">
+                          <Quote className="text-[#E4E3E0]/30 rotate-180 shrink-0" size={24} />
+                          {isShared && (
+                            <span className="text-[8px] bg-amber-400/10 text-amber-300 border border-amber-400/20 px-1.5 py-0.5 uppercase tracking-widest font-mono font-bold rounded">
+                              Direct Shared Post
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm font-serif italic leading-relaxed text-[#E4E3E0]/90">
+                          "{test.content}"
+                        </p>
                       </div>
-                    </div>
+
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 border-t border-white/10">
+                        <div className="flex items-center gap-4">
+                          {test.avatar_url ? (
+                            <img
+                              src={test.avatar_url}
+                              alt={test.author_name}
+                              className="w-12 h-12 rounded border border-[#141414] object-cover shrink-0"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <AIAvatar name={test.author_name} className="w-12 h-12" />
+                          )}
+                          <div>
+                            <h4 className="font-serif italic font-bold text-[#E4E3E0]">{test.author_name}</h4>
+                            <span className="text-[10px] font-mono uppercase tracking-wider text-[#E4E3E0]/50 font-bold block">
+                              {test.role || "Community Alumnus"}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+                          <button
+                            onClick={() => handleLikeTestimonial(test.id)}
+                            className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 border border-white/10 hover:border-white/30 hover:bg-white/10 text-[10px] font-bold uppercase tracking-wider font-mono text-[#E4E3E0] transition-all cursor-pointer rounded-sm"
+                            title="Celebrate this success story!"
+                          >
+                            <Heart size={12} className="text-rose-400 fill-rose-400/20" />
+                            <span>Celebrate ({test.likes_count || 0})</span>
+                          </button>
+
+                          <button
+                            onClick={() => toggleComments(test.id)}
+                            className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 border hover:bg-white/10 text-[10px] font-bold uppercase tracking-wider font-mono text-[#E4E3E0] transition-all cursor-pointer rounded-sm ${
+                              expandedComments[test.id]
+                                ? 'border-white bg-white/10'
+                                : 'border-white/10 hover:border-white/30'
+                            }`}
+                            title="Show comments and encouragement"
+                          >
+                            <MessageSquare size={12} className="text-[#E4E3E0]/80" />
+                            <span>Comments ({test.comments?.length || 0})</span>
+                          </button>
+
+                          <button
+                            onClick={() => handleShareStory(test.id)}
+                            className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 border text-[10px] font-bold uppercase tracking-wider font-mono text-[#E4E3E0] transition-all cursor-pointer rounded-sm ${
+                              copiedStoryId === test.id
+                                ? 'border-emerald-500 bg-emerald-500/20 text-emerald-300'
+                                : 'border-white/10 hover:border-white/30 hover:bg-white/10'
+                            }`}
+                            title="Copy a share link to this story!"
+                          >
+                            <Share2 size={12} className={copiedStoryId === test.id ? 'text-emerald-400' : 'text-[#E4E3E0]/80'} />
+                            <span>{copiedStoryId === test.id ? 'Copied!' : 'Share'}</span>
+                          </button>
+                        </div>
+                      </div>
+
+                    {expandedComments[test.id] && (
+                      <div className="mt-4 pt-4 border-t border-white/10 space-y-4 text-left">
+                        <h5 className="text-[10px] font-mono uppercase tracking-widest text-[#E4E3E0]/50 font-bold">
+                          Discussion & Encouragement ({test.comments?.length || 0})
+                        </h5>
+                        
+                        {/* List of comments */}
+                        <div className="max-h-48 overflow-y-auto space-y-3 pr-1 custom-scrollbar">
+                          {(!test.comments || test.comments.length === 0) ? (
+                            <p className="text-xs text-[#E4E3E0]/40 italic pl-1">
+                              No encouragement left yet. Be the first to lift them up!
+                            </p>
+                          ) : (
+                            test.comments.map((comment) => (
+                              <div key={comment.id} className="space-y-1 bg-white/5 p-3 rounded border border-white/5 text-left">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    {comment.avatar_url ? (
+                                      <img
+                                        src={comment.avatar_url}
+                                        alt={comment.author_name}
+                                        className="w-5 h-5 rounded-sm border border-[#141414] object-cover shrink-0"
+                                        referrerPolicy="no-referrer"
+                                      />
+                                    ) : (
+                                      <AIAvatar name={comment.author_name} className="w-5 h-5" />
+                                    )}
+                                    <span className="font-serif italic font-bold text-[#E4E3E0] text-xs">
+                                      {comment.author_name}
+                                    </span>
+                                  </div>
+                                  {comment.created_at && (
+                                    <span className="text-[8px] font-mono text-[#E4E3E0]/40">
+                                      {new Date(comment.created_at).toLocaleDateString(undefined, {
+                                        month: 'short',
+                                        day: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                      })}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-[#E4E3E0]/80 pl-7 leading-relaxed font-sans">
+                                  {comment.content}
+                                </p>
+                              </div>
+                            ))
+                          )}
+                        </div>
+
+                        {/* Add Comment Box */}
+                        <div className="flex gap-2 pt-2 border-t border-white/5">
+                          <textarea
+                            rows={1}
+                            value={newCommentTexts[test.id] || ""}
+                            onChange={(e) => handleCommentTextChange(test.id, e.target.value)}
+                            placeholder="Type an encouraging note..."
+                            className="flex-1 bg-white/5 border border-white/10 text-[#E4E3E0] placeholder-[#E4E3E0]/40 p-2 text-xs focus:outline-none focus:border-white/30 resize-none rounded"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                handlePostComment(test.id);
+                              }
+                            }}
+                          />
+                          <button
+                            onClick={() => handlePostComment(test.id)}
+                            disabled={isSubmittingComment[test.id] || !(newCommentTexts[test.id] || "").trim()}
+                            className="bg-white hover:bg-[#E4E3E0] text-[#141414] disabled:opacity-40 disabled:hover:bg-white text-[10px] font-semibold uppercase tracking-wider font-mono px-3 py-2 rounded-sm transition-all shrink-0 cursor-pointer"
+                          >
+                            {isSubmittingComment[test.id] ? "Posting..." : "Post"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </motion.div>
-                ));
-              })()}
+                );
+              });
+            })()}
             </div>
 
             {/* Slider navigations */}

@@ -132,6 +132,16 @@ export interface AppDocument {
   file_size?: number;
 }
 
+export interface TestimonialComment {
+  id: string;
+  testimonial_id: string;
+  user_id: string | null;
+  author_name: string;
+  content: string;
+  avatar_url?: string;
+  created_at?: string;
+}
+
 export interface Testimonial {
   id: string;
   user_id: string | null;
@@ -139,5 +149,7 @@ export interface Testimonial {
   content: string;
   role?: string;
   avatar_url?: string;
+  likes_count?: number;
+  comments?: TestimonialComment[];
   created_at?: string;
 }

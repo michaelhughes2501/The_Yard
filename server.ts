@@ -62,6 +62,10 @@ try {
   db.exec("ALTER TABLE kites ADD COLUMN read_at DATETIME");
 } catch (e) {}
 
+try {
+  db.exec("ALTER TABLE testimonials ADD COLUMN likes_count INTEGER DEFAULT 0");
+} catch (e) {}
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
@@ -224,7 +228,19 @@ db.exec(`
     content TEXT,
     role TEXT,
     avatar_url TEXT,
+    likes_count INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id)
+  );
+  CREATE TABLE IF NOT EXISTS testimonial_comments (
+    id TEXT PRIMARY KEY,
+    testimonial_id TEXT,
+    user_id TEXT,
+    author_name TEXT,
+    content TEXT,
+    avatar_url TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(testimonial_id) REFERENCES testimonials(id) ON DELETE CASCADE,
     FOREIGN KEY(user_id) REFERENCES users(id)
   );
 `);
@@ -557,9 +573,62 @@ async function startServer() {
             seed.id, seed.user_id, seed.author_name, seed.content, seed.role, seed.avatar_url, seed.created_at
           );
         }
+
+        // Seed default comments
+        const defaultComments = [
+          {
+            id: crypto.randomUUID(),
+            testimonial_name: "Marcus Vance",
+            author_name: "Tyrone J.",
+            content: "This is so inspiring, Marcus! Hard work pays off. Truly proud of you.",
+            created_offset: 1 * 60 * 60 * 1000 // 1 hour after
+          },
+          {
+            id: crypto.randomUUID(),
+            testimonial_name: "Marcus Vance",
+            author_name: "Aisha Blake",
+            content: "Incredible transition. Thanks for showing what is possible.",
+            created_offset: 2 * 60 * 60 * 1000
+          },
+          {
+            id: crypto.randomUUID(),
+            testimonial_name: "David Chen",
+            author_name: "Sarah Miller",
+            content: "Congratulations on the contracting business! We need more felony-friendly employers.",
+            created_offset: 4 * 60 * 60 * 1000
+          },
+          {
+            id: crypto.randomUUID(),
+            testimonial_name: "Carlos Mendez",
+            author_name: "Derrick Lane",
+            content: "Having people like you who understand the struggle as a guide is a game-changer. Keep shining, Carlos!",
+            created_offset: 5 * 60 * 60 * 1000
+          }
+        ];
+        
+        for (const dc of defaultComments) {
+          const t = seeds.find(s => s.author_name === dc.testimonial_name);
+          if (t) {
+            const commentTime = new Date(new Date(t.created_at).getTime() + dc.created_offset).toISOString();
+            db.prepare("INSERT INTO testimonial_comments (id, testimonial_id, user_id, author_name, content, avatar_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(
+              dc.id, t.id, null, dc.author_name, dc.content, null, commentTime
+            );
+          }
+        }
+
         rows = db.prepare("SELECT * FROM testimonials ORDER BY created_at DESC").all() as any[];
       }
-      res.json(rows);
+
+      // Fetch and attach comments for each success story
+      const withComments = rows.map(row => {
+        const comments = db.prepare("SELECT * FROM testimonial_comments WHERE testimonial_id = ? ORDER BY created_at ASC").all(row.id);
+        return {
+          ...row,
+          comments: comments || []
+        };
+      });
+
+      res.json(withComments);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -581,6 +650,48 @@ async function startServer() {
         id, req.userId, name, content, cleanRole, avatar
       );
       res.json({ success: true, id });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/testimonials/:id/like", requireAuth, (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const testimonial = db.prepare("SELECT id FROM testimonials WHERE id = ?").get(id);
+      if (!testimonial) {
+        return res.status(404).json({ error: "Success story not found" });
+      }
+      db.prepare("UPDATE testimonials SET likes_count = COALESCE(likes_count, 0) + 1 WHERE id = ?").run(id);
+      const updated = db.prepare("SELECT COALESCE(likes_count, 0) as likes_count FROM testimonials WHERE id = ?").get(id) as any;
+      res.json({ success: true, likes_count: updated.likes_count });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/testimonials/:id/comments", requireAuth, (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { content, author_name } = req.body;
+      if (!content || !content.trim()) {
+        return res.status(400).json({ error: "Comment content is required" });
+      }
+      const testimonial = db.prepare("SELECT id FROM testimonials WHERE id = ?").get(id);
+      if (!testimonial) {
+        return res.status(404).json({ error: "Success story not found" });
+      }
+      const userObj = db.prepare("SELECT username, avatar_url FROM users WHERE id = ?").get(req.userId) as any;
+      const name = author_name || (userObj ? userObj.username : "Anonymous");
+      const avatar = userObj ? userObj.avatar_url : null;
+
+      const commentId = crypto.randomUUID();
+      db.prepare("INSERT INTO testimonial_comments (id, testimonial_id, user_id, author_name, content, avatar_url) VALUES (?, ?, ?, ?, ?, ?)").run(
+        commentId, id, req.userId, name, content, avatar
+      );
+      
+      const comments = db.prepare("SELECT * FROM testimonial_comments WHERE testimonial_id = ? ORDER BY created_at ASC").all(id);
+      res.json({ success: true, comments });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
