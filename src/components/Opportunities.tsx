@@ -12,9 +12,13 @@ interface JobApplication {
   notes: string;
 }
 
-export default function Opportunities() {
+export default function Opportunities({ initialTab = 'jobs' }: { initialTab?: 'jobs' | 'housing' | 'tracker' }) {
   const { token } = useAuth();
-  const [activeTab, setActiveTab] = useState<'jobs' | 'housing' | 'tracker'>('jobs');
+  const [activeTab, setActiveTab] = useState<'jobs' | 'housing' | 'tracker'>(initialTab);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [housing, setHousing] = useState<Housing[]>([]);
   const [applications, setApplications] = useState<JobApplication[]>([]);

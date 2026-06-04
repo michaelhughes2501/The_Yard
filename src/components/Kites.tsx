@@ -14,6 +14,50 @@ export default function Kites({ onNavigate }: { onNavigate?: (tab: any) => void 
   const { token, user } = useAuth();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Drafts state loaded from local storage
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (user?.id) {
+      const savedDrafts = localStorage.getItem(`kites_drafts_${user.id}`);
+      if (savedDrafts) {
+        try {
+          setDrafts(JSON.parse(savedDrafts));
+        } catch (e) {
+          console.error('Failed to parse drafts', e);
+        }
+      } else {
+        setDrafts({});
+      }
+    } else {
+      setDrafts({});
+    }
+  }, [user?.id]);
+
+  // Load draft when active thread changes
+  useEffect(() => {
+    if (activeThread) {
+      setReplyContent(drafts[activeThread] || '');
+    } else {
+      setReplyContent('');
+    }
+  }, [activeThread]);
+
+  // Update reply content and preserve state
+  const handleReplyChange = (content: string) => {
+    setReplyContent(content);
+    if (activeThread && user?.id) {
+      const updatedDrafts = { ...drafts };
+      if (content.trim()) {
+        updatedDrafts[activeThread] = content;
+      } else {
+        delete updatedDrafts[activeThread];
+      }
+      setDrafts(updatedDrafts);
+      localStorage.setItem(`kites_drafts_${user.id}`, JSON.stringify(updatedDrafts));
+    }
+  };
+
   const fetchConversations = () => {
     fetch('/api/kites/conversations', {
       headers: { Authorization: `Bearer ${token}` }
@@ -97,6 +141,15 @@ export default function Kites({ onNavigate }: { onNavigate?: (tab: any) => void 
         body: JSON.stringify({ receiverId: activeThread, content: replyContent })
       });
       setReplyContent('');
+      
+      // Clear draft on successful send
+      if (user?.id) {
+        const updatedDrafts = { ...drafts };
+        delete updatedDrafts[activeThread];
+        setDrafts(updatedDrafts);
+        localStorage.setItem(`kites_drafts_${user.id}`, JSON.stringify(updatedDrafts));
+      }
+
       fetchThread(activeThread);
       fetchConversations();
     } catch (err) {
@@ -147,8 +200,13 @@ export default function Kites({ onNavigate }: { onNavigate?: (tab: any) => void 
                   <motion.div layoutId="active-bg" className="absolute inset-y-0 left-0 w-1 bg-[#141414]" />
                 )}
                 <div className="flex justify-between items-center mb-2">
-                  <span className={`font-bold uppercase tracking-widest text-xs ${conv.unread_count > 0 ? 'text-[#141414]' : 'opacity-60'}`}>
+                  <span className={`font-bold uppercase tracking-widest text-xs flex items-center gap-2 ${conv.unread_count > 0 ? 'text-[#141414]' : 'opacity-60'}`}>
                     {conv.other_user_name}
+                    {drafts[conv.other_user_id] && (
+                      <span className="text-[9px] bg-amber-500/15 text-amber-700 border border-amber-500/20 px-1.5 py-0.5 normal-case tracking-normal font-mono font-bold rounded-sm">
+                        Draft
+                      </span>
+                    )}
                   </span>
                   <span className="text-[10px] opacity-40 flex items-center gap-1 font-mono">
                     {new Date(conv.last_message_time).toLocaleDateString()}
@@ -267,13 +325,13 @@ export default function Kites({ onNavigate }: { onNavigate?: (tab: any) => void 
                 <div ref={messagesEndRef} />
               </div>
               
-              <div className="p-4 md:p-6 border-t border-[#141414]/10 bg-white">
+              <div className="p-4 md:p-6 border-t border-[#141414]/10 bg-white space-y-2">
                 <div className="relative flex gap-3 items-end">
                   <textarea 
                     rows={1}
                     value={replyContent}
                     onChange={e => {
-                      setReplyContent(e.target.value);
+                      handleReplyChange(e.target.value);
                       e.target.style.height = 'auto';
                       e.target.style.height = e.target.scrollHeight + 'px';
                     }}
@@ -294,6 +352,14 @@ export default function Kites({ onNavigate }: { onNavigate?: (tab: any) => void 
                     <Send size={20} />
                   </button>
                 </div>
+                {replyContent.trim() && (
+                  <div className="flex items-center gap-1.5 px-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-[#141414]/50">
+                      Draft Saved Locally
+                    </span>
+                  </div>
+                )}
               </div>
             </>
           ) : (

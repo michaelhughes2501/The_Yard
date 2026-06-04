@@ -1,9 +1,36 @@
 import React, { useState, useEffect } from 'react';
-import { Search, UserPlus, MapPin, History, UserCheck, Sparkles, Quote, ChevronLeft, ChevronRight, Plus, X, Heart, MessageSquare, Share2 } from 'lucide-react';
+import { Search, UserPlus, MapPin, History, UserCheck, Sparkles, Quote, ChevronLeft, ChevronRight, Plus, X, Heart, MessageSquare, Share2, Activity } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../AuthContext';
 import { User, Testimonial } from '../types';
 import { calculateRelevanceScore } from '../utils/searchUtils';
+
+export interface ActivityItem {
+  id: string;
+  type: 'connection' | 'kite' | 'story' | 'comment' | 'system' | 'like';
+  title: string;
+  description: string;
+  timestamp: string;
+}
+
+function formatRelativeTime(dateString: string): string {
+  try {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays === 1) return 'Yesterday';
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  } catch (e) {
+    return 'Recently';
+  }
+}
 
 function AIAvatar({ name, className = "w-12 h-12" }: { name: string; className?: string }) {
   let hash = 0;
@@ -84,6 +111,61 @@ export default function TheYard() {
   const [connectedIds, setConnectedIds] = useState<string[]>([]);
   const [filterMode, setFilterMode] = useState<'all' | 'connections'>('all');
   const { token, user } = useAuth();
+
+  // User's Recent Activities
+  const [activities, setActivities] = useState<ActivityItem[]>([]);
+
+  useEffect(() => {
+    if (user?.id) {
+      const storageKey = `recent_activities_${user.id}`;
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        try {
+          setActivities(JSON.parse(saved));
+        } catch (e) {
+          console.error('Error parsing recent activities', e);
+        }
+      } else {
+        // Seed some realistic high-quality initial activities
+        const initialActivities: ActivityItem[] = [
+          {
+            id: 'init-1',
+            type: 'system',
+            title: 'Remix Network Joined',
+            description: 'Established secure digital identity and joined the peer re-entry directory.',
+            timestamp: new Date(Date.now() - 3 * 3600 * 1000).toISOString() // 3 hours ago
+          },
+          {
+            id: 'init-2',
+            type: 'system',
+            title: 'Profile Initialized',
+            description: 'Synchronized alignment credentials including transitional facility and location.',
+            timestamp: new Date(Date.now() - 2.5 * 3600 * 1000).toISOString() // 2.5 hours ago
+          }
+        ];
+        setActivities(initialActivities);
+        localStorage.setItem(storageKey, JSON.stringify(initialActivities));
+      }
+    }
+  }, [user?.id]);
+
+  const logActivity = (type: ActivityItem['type'], title: string, description: string) => {
+    if (!user?.id) return;
+    const storageKey = `recent_activities_${user.id}`;
+    const newActivity: ActivityItem = {
+      id: Math.random().toString(36).substring(2, 11),
+      type,
+      title,
+      description,
+      timestamp: new Date().toISOString()
+    };
+    
+    setActivities(prev => {
+      const updated = [newActivity, ...prev].slice(0, 10); // Keep last 10 activities
+      localStorage.setItem(storageKey, JSON.stringify(updated));
+      return updated;
+    });
+  };
 
   // Testimonials and Success Stories states
   const [testimonials, setTestimonials] = useState<Testimonial[]>([]);
@@ -170,6 +252,14 @@ export default function TheYard() {
         setTestimonials(prev => prev.map(t => t.id === testimonialId ? { ...t, comments: data.comments } : t));
         // Clear input
         setNewCommentTexts(prev => ({ ...prev, [testimonialId]: '' }));
+        
+        // Log recent interaction details
+        const targetStory = testimonials.find(t => t.id === testimonialId);
+        logActivity(
+          'comment',
+          'Enriched with Feedback',
+          `Posted words of support and transition encouragement to ${targetStory ? targetStory.author_name : 'a peer'}'s milestone.`
+        );
       } else {
         const errData = await res.json();
         alert(errData.error || 'Failed to post comment.');
@@ -256,6 +346,13 @@ export default function TheYard() {
         // Reset slider to the newest story
         setStoryIndex(0);
         alert('Thank you for sharing your story of hope! It has been posted to the Home Feed.');
+        
+        // Log milestone story shared
+        logActivity(
+          'story',
+          'Shared Milestone Story',
+          `Published a community success lighthouse story under your alias.`
+        );
       } else {
         const errData = await res.json();
         alert(errData.error || 'Failed to submit success story.');
@@ -280,6 +377,14 @@ export default function TheYard() {
       if (res.ok) {
         const data = await res.json();
         setTestimonials(prev => prev.map(t => t.id === id ? { ...t, likes_count: data.likes_count } : t));
+        
+        // Log celebration clicked
+        const targetStory = testimonials.find(t => t.id === id);
+        logActivity(
+          'like',
+          'Celebrated Re-entry Milestone',
+          `Lending positive peer strength to ${targetStory ? targetStory.author_name : 'a member'}'s journey.`
+        );
       } else {
         const errData = await res.json();
         alert(errData.error || 'Failed to celebrate this story.');
@@ -303,6 +408,13 @@ export default function TheYard() {
         body: JSON.stringify({ receiverId, content })
       });
       alert('Kite sent successfully! Check your Kites tab to view the conversation.');
+      
+      // Log encrypted peer messaging
+      logActivity(
+        'kite',
+        'Launched private Kite',
+        `Dispatched an encrypted peer-to-peer message to ${name}.`
+      );
     } catch (err) {
       alert('Failed to send kite.');
     }
@@ -325,10 +437,22 @@ export default function TheYard() {
       });
 
       if (res.ok) {
+        const targetUser = users.find(u => u.id === userId);
+        const name = targetUser ? targetUser.name : 'a peer';
         if (isCurrentlyConnected) {
           setConnectedIds(prev => prev.filter(id => id !== userId));
+          logActivity(
+            'connection',
+            'Connection Cleared',
+            `Unlinked active directory pairing with ${name}.`
+          );
         } else {
           setConnectedIds(prev => [...prev, userId]);
+          logActivity(
+            'connection',
+            'Directory Connection Formed',
+            `Linked direct secure connection pairing in The Yard with ${name}.`
+          );
         }
       } else {
         const errData = await res.json();
@@ -366,226 +490,324 @@ export default function TheYard() {
         </p>
       </header>
 
-      {/* Testimonials Banner / Success Stories */}
-      {testimonials.length > 0 && (
-        <div className="bg-[#141414] text-[#E4E3E0] border border-[#141414] p-8 space-y-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-[#E4E3E0]/20 pb-4">
-            <div className="space-y-1">
-              <span className="text-[10px] uppercase font-mono tracking-widest text-[#E4E3E0]/60 flex items-center gap-1.5 font-bold">
-                <Sparkles size={12} className="text-[#E4E3E0] opacity-80" /> Voices of Triumph // Success Stories
-              </span>
-              <h3 className="text-3xl font-serif italic">Community Milestones</h3>
-            </div>
-            <button
-              onClick={() => setShowStoryModal(true)}
-              className="px-4 py-2 border border-[#E4E3E0]/30 hover:border-[#E4E3E0] text-xs font-bold uppercase tracking-widest font-mono hover:bg-white hover:text-[#141414] transition-all flex items-center gap-2 cursor-pointer"
-            >
-              <Plus size={14} /> + Share Your Story
-            </button>
+      {/* Community Milestones & Recent Activity Dashboard */}
+      <div className="bg-[#141414] text-[#E4E3E0] border border-[#141414] p-8 space-y-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-[#E4E3E0]/20 pb-4">
+          <div className="space-y-1">
+            <span className="text-[10px] uppercase font-mono tracking-widest text-[#E4E3E0]/60 flex items-center gap-1.5 font-bold">
+              <Sparkles size={12} className="text-[#E4E3E0] opacity-80" /> Voices of Triumph // Success Stories
+            </span>
+            <h3 className="text-3xl font-serif italic">Community Milestones</h3>
           </div>
+          <button
+            onClick={() => setShowStoryModal(true)}
+            className="px-4 py-2 border border-[#E4E3E0]/30 hover:border-[#E4E3E0] text-xs font-bold uppercase tracking-widest font-mono hover:bg-white hover:text-[#141414] transition-all flex items-center gap-2 cursor-pointer"
+          >
+            <Plus size={14} /> + Share Your Story
+          </button>
+        </div>
 
-          {/* Testimonial slider view */}
-          <div className="relative">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {(() => {
-                const activeStoriesToShow = [];
-                if (testimonials.length > 0) {
-                  activeStoriesToShow.push(testimonials[storyIndex]);
-                  if (testimonials.length > 1) {
-                    const secondIdx = (storyIndex + 1) % testimonials.length;
-                    activeStoriesToShow.push(testimonials[secondIdx]);
-                  }
-                }
+        {/* Dashboard Grid Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Left Column: Milestones (Col Span 2) */}
+          <div className="lg:col-span-2 space-y-4">
+            {testimonials.length > 0 ? (
+              <div className="relative">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {(() => {
+                    const activeStoriesToShow = [];
+                    if (testimonials.length > 0) {
+                      activeStoriesToShow.push(testimonials[storyIndex]);
+                      if (testimonials.length > 1) {
+                        const secondIdx = (storyIndex + 1) % testimonials.length;
+                        activeStoriesToShow.push(testimonials[secondIdx]);
+                      }
+                    }
 
-                return activeStoriesToShow.map((test, index) => {
-                  const isShared = test.id === sharedStoryId;
-                  return (
-                    <motion.div
-                      key={test.id + "-" + index}
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ duration: 0.3 }}
-                      className={`bg-white/5 border p-6 flex flex-col justify-between space-y-6 hover:border-white/20 transition-all group ${
-                        isShared
-                          ? 'border-amber-400/80 shadow-[0_0_15px_rgba(245,158,11,0.15)] ring-1 ring-amber-400/30'
-                          : 'border-white/10'
-                      }`}
-                    >
-                      <div className="space-y-3">
-                        <div className="flex justify-between items-start">
-                          <Quote className="text-[#E4E3E0]/30 rotate-180 shrink-0" size={24} />
-                          {isShared && (
-                            <span className="text-[8px] bg-amber-400/10 text-amber-300 border border-amber-400/20 px-1.5 py-0.5 uppercase tracking-widest font-mono font-bold rounded">
-                              Direct Shared Post
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-sm font-serif italic leading-relaxed text-[#E4E3E0]/90">
-                          "{test.content}"
-                        </p>
-                      </div>
-
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 border-t border-white/10">
-                        <div className="flex items-center gap-4">
-                          {test.avatar_url ? (
-                            <img
-                              src={test.avatar_url}
-                              alt={test.author_name}
-                              className="w-12 h-12 rounded border border-[#141414] object-cover shrink-0"
-                              referrerPolicy="no-referrer"
-                            />
-                          ) : (
-                            <AIAvatar name={test.author_name} className="w-12 h-12" />
-                          )}
-                          <div>
-                            <h4 className="font-serif italic font-bold text-[#E4E3E0]">{test.author_name}</h4>
-                            <span className="text-[10px] font-mono uppercase tracking-wider text-[#E4E3E0]/50 font-bold block">
-                              {test.role || "Community Alumnus"}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
-                          <button
-                            onClick={() => handleLikeTestimonial(test.id)}
-                            className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 border border-white/10 hover:border-white/30 hover:bg-white/10 text-[10px] font-bold uppercase tracking-wider font-mono text-[#E4E3E0] transition-all cursor-pointer rounded-sm"
-                            title="Celebrate this success story!"
-                          >
-                            <Heart size={12} className="text-rose-400 fill-rose-400/20" />
-                            <span>Celebrate ({test.likes_count || 0})</span>
-                          </button>
-
-                          <button
-                            onClick={() => toggleComments(test.id)}
-                            className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 border hover:bg-white/10 text-[10px] font-bold uppercase tracking-wider font-mono text-[#E4E3E0] transition-all cursor-pointer rounded-sm ${
-                              expandedComments[test.id]
-                                ? 'border-white bg-white/10'
-                                : 'border-white/10 hover:border-white/30'
-                            }`}
-                            title="Show comments and encouragement"
-                          >
-                            <MessageSquare size={12} className="text-[#E4E3E0]/80" />
-                            <span>Comments ({test.comments?.length || 0})</span>
-                          </button>
-
-                          <button
-                            onClick={() => handleShareStory(test.id)}
-                            className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 border text-[10px] font-bold uppercase tracking-wider font-mono text-[#E4E3E0] transition-all cursor-pointer rounded-sm ${
-                              copiedStoryId === test.id
-                                ? 'border-emerald-500 bg-emerald-500/20 text-emerald-300'
-                                : 'border-white/10 hover:border-white/30 hover:bg-white/10'
-                            }`}
-                            title="Copy a share link to this story!"
-                          >
-                            <Share2 size={12} className={copiedStoryId === test.id ? 'text-emerald-400' : 'text-[#E4E3E0]/80'} />
-                            <span>{copiedStoryId === test.id ? 'Copied!' : 'Share'}</span>
-                          </button>
-                        </div>
-                      </div>
-
-                    {expandedComments[test.id] && (
-                      <div className="mt-4 pt-4 border-t border-white/10 space-y-4 text-left">
-                        <h5 className="text-[10px] font-mono uppercase tracking-widest text-[#E4E3E0]/50 font-bold">
-                          Discussion & Encouragement ({test.comments?.length || 0})
-                        </h5>
-                        
-                        {/* List of comments */}
-                        <div className="max-h-48 overflow-y-auto space-y-3 pr-1 custom-scrollbar">
-                          {(!test.comments || test.comments.length === 0) ? (
-                            <p className="text-xs text-[#E4E3E0]/40 italic pl-1">
-                              No encouragement left yet. Be the first to lift them up!
+                    return activeStoriesToShow.map((test, index) => {
+                      const isShared = test.id === sharedStoryId;
+                      return (
+                        <motion.div
+                          key={test.id + "-" + index}
+                          initial={{ opacity: 0, x: 20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ duration: 0.3 }}
+                          className={`bg-white/5 border p-6 flex flex-col justify-between space-y-6 hover:border-white/20 transition-all group ${
+                            isShared
+                              ? 'border-amber-400/80 shadow-[0_0_15px_rgba(245,158,11,0.15)] ring-1 ring-amber-400/30'
+                              : 'border-white/10'
+                          }`}
+                        >
+                          <div className="space-y-3 text-left">
+                            <div className="flex justify-between items-start">
+                              <Quote className="text-[#E4E3E0]/30 rotate-180 shrink-0" size={24} />
+                              {isShared && (
+                                <span className="text-[8px] bg-amber-400/10 text-amber-300 border border-amber-400/20 px-1.5 py-0.5 uppercase tracking-widest font-mono font-bold rounded">
+                                  Direct Shared Post
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-sm font-serif italic leading-relaxed text-[#E4E3E0]/90">
+                              "{test.content}"
                             </p>
-                          ) : (
-                            test.comments.map((comment) => (
-                              <div key={comment.id} className="space-y-1 bg-white/5 p-3 rounded border border-white/5 text-left">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    {comment.avatar_url ? (
-                                      <img
-                                        src={comment.avatar_url}
-                                        alt={comment.author_name}
-                                        className="w-5 h-5 rounded-sm border border-[#141414] object-cover shrink-0"
-                                        referrerPolicy="no-referrer"
-                                      />
-                                    ) : (
-                                      <AIAvatar name={comment.author_name} className="w-5 h-5" />
-                                    )}
-                                    <span className="font-serif italic font-bold text-[#E4E3E0] text-xs">
-                                      {comment.author_name}
-                                    </span>
-                                  </div>
-                                  {comment.created_at && (
-                                    <span className="text-[8px] font-mono text-[#E4E3E0]/40">
-                                      {new Date(comment.created_at).toLocaleDateString(undefined, {
-                                        month: 'short',
-                                        day: 'numeric',
-                                        hour: '2-digit',
-                                        minute: '2-digit'
-                                      })}
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-xs text-[#E4E3E0]/80 pl-7 leading-relaxed font-sans">
-                                  {comment.content}
-                                </p>
+                          </div>
+
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 border-t border-white/10">
+                            <div className="flex items-center gap-4">
+                              {test.avatar_url ? (
+                                <img
+                                  src={test.avatar_url}
+                                  alt={test.author_name}
+                                  className="w-12 h-12 rounded border border-[#141414] object-cover shrink-0"
+                                  referrerPolicy="no-referrer"
+                                />
+                              ) : (
+                                <AIAvatar name={test.author_name} className="w-12 h-12" />
+                              )}
+                              <div className="text-left">
+                                <h4 className="font-serif italic font-bold text-[#E4E3E0]">{test.author_name}</h4>
+                                <span className="text-[10px] font-mono uppercase tracking-wider text-[#E4E3E0]/50 font-bold block">
+                                  {test.role || "Community Alumnus"}
+                                </span>
                               </div>
-                            ))
+                            </div>
+
+                            <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+                              <button
+                                onClick={() => handleLikeTestimonial(test.id)}
+                                className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 border border-white/10 hover:border-white/30 hover:bg-white/10 text-[10px] font-bold uppercase tracking-wider font-mono text-[#E4E3E0] transition-all cursor-pointer rounded-sm"
+                                title="Celebrate this success story!"
+                              >
+                                <Heart size={12} className="text-rose-400 fill-rose-400/20" />
+                                <span>Celebrate ({test.likes_count || 0})</span>
+                              </button>
+
+                              <button
+                                onClick={() => toggleComments(test.id)}
+                                className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 border hover:bg-white/10 text-[10px] font-bold uppercase tracking-wider font-mono text-[#E4E3E0] transition-all cursor-pointer rounded-sm ${
+                                  expandedComments[test.id]
+                                    ? 'border-white bg-white/10'
+                                    : 'border-white/10 hover:border-white/30'
+                                }`}
+                                title="Show comments and encouragement"
+                              >
+                                <MessageSquare size={12} className="text-[#E4E3E0]/80" />
+                                <span>Comments ({test.comments?.length || 0})</span>
+                              </button>
+
+                              <button
+                                onClick={() => handleShareStory(test.id)}
+                                className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 border text-[10px] font-bold uppercase tracking-wider font-mono text-[#E4E3E0] transition-all cursor-pointer rounded-sm ${
+                                  copiedStoryId === test.id
+                                    ? 'border-emerald-500 bg-emerald-500/20 text-emerald-300'
+                                    : 'border-white/10 hover:border-white/30 hover:bg-white/10'
+                                }`}
+                                title="Copy a share link to this story!"
+                              >
+                                <Share2 size={12} className={copiedStoryId === test.id ? 'text-emerald-400' : 'text-[#E4E3E0]/80'} />
+                                <span>{copiedStoryId === test.id ? 'Copied!' : 'Share'}</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          {expandedComments[test.id] && (
+                            <div className="mt-4 pt-4 border-t border-white/10 space-y-4 text-left">
+                              <h5 className="text-[10px] font-mono uppercase tracking-widest text-[#E4E3E0]/50 font-bold">
+                                Discussion & Encouragement ({test.comments?.length || 0})
+                              </h5>
+                              
+                              {/* List of comments */}
+                              <div className="max-h-48 overflow-y-auto space-y-3 pr-1 custom-scrollbar">
+                                {(!test.comments || test.comments.length === 0) ? (
+                                  <p className="text-xs text-[#E4E3E0]/40 italic pl-1">
+                                    No encouragement left yet. Be the first to lift them up!
+                                  </p>
+                                ) : (
+                                  test.comments.map((comment) => (
+                                    <div key={comment.id} className="space-y-1 bg-white/5 p-3 rounded border border-white/5 text-left">
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                          {comment.avatar_url ? (
+                                            <img
+                                              src={comment.avatar_url}
+                                              alt={comment.author_name}
+                                              className="w-5 h-5 rounded-sm border border-[#141414] object-cover shrink-0"
+                                              referrerPolicy="no-referrer"
+                                            />
+                                          ) : (
+                                            <AIAvatar name={comment.author_name} className="w-5 h-5" />
+                                          )}
+                                          <span className="font-serif italic font-bold text-[#E4E3E0] text-xs">
+                                            {comment.author_name}
+                                          </span>
+                                        </div>
+                                        {comment.created_at && (
+                                          <span className="text-[8px] font-mono text-[#E4E3E0]/40">
+                                            {new Date(comment.created_at).toLocaleDateString(undefined, {
+                                              month: 'short',
+                                              day: 'numeric',
+                                              hour: '2-digit',
+                                              minute: '2-digit'
+                                            })}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p className="text-xs text-[#E4E3E0]/80 pl-7 leading-relaxed font-sans">
+                                        {comment.content}
+                                      </p>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+
+                              {/* Add Comment Box */}
+                              <div className="flex gap-2 pt-2 border-t border-white/5">
+                                <textarea
+                                  rows={1}
+                                  value={newCommentTexts[test.id] || ""}
+                                  onChange={(e) => handleCommentTextChange(test.id, e.target.value)}
+                                  placeholder="Type an encouraging note..."
+                                  className="flex-1 bg-white/5 border border-white/10 text-[#E4E3E0] placeholder-[#E4E3E0]/40 p-2 text-xs focus:outline-none focus:border-white/30 resize-none rounded animate-none"
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                      e.preventDefault();
+                                      handlePostComment(test.id);
+                                    }
+                                  }}
+                                />
+                                <button
+                                  onClick={() => handlePostComment(test.id)}
+                                  disabled={isSubmittingComment[test.id] || !(newCommentTexts[test.id] || "").trim()}
+                                  className="bg-white hover:bg-[#E4E3E0] text-[#141414] disabled:opacity-40 disabled:hover:bg-white text-[10px] font-semibold uppercase tracking-wider font-mono px-3 py-2 rounded-sm transition-all shrink-0 cursor-pointer"
+                                >
+                                  {isSubmittingComment[test.id] ? "Posting..." : "Post"}
+                                </button>
+                              </div>
+                            </div>
                           )}
-                        </div>
+                        </motion.div>
+                      );
+                    });
+                  })()}
+                </div>
 
-                        {/* Add Comment Box */}
-                        <div className="flex gap-2 pt-2 border-t border-white/5">
-                          <textarea
-                            rows={1}
-                            value={newCommentTexts[test.id] || ""}
-                            onChange={(e) => handleCommentTextChange(test.id, e.target.value)}
-                            placeholder="Type an encouraging note..."
-                            className="flex-1 bg-white/5 border border-white/10 text-[#E4E3E0] placeholder-[#E4E3E0]/40 p-2 text-xs focus:outline-none focus:border-white/30 resize-none rounded"
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' && !e.shiftKey) {
-                                e.preventDefault();
-                                handlePostComment(test.id);
-                              }
-                            }}
-                          />
-                          <button
-                            onClick={() => handlePostComment(test.id)}
-                            disabled={isSubmittingComment[test.id] || !(newCommentTexts[test.id] || "").trim()}
-                            className="bg-white hover:bg-[#E4E3E0] text-[#141414] disabled:opacity-40 disabled:hover:bg-white text-[10px] font-semibold uppercase tracking-wider font-mono px-3 py-2 rounded-sm transition-all shrink-0 cursor-pointer"
-                          >
-                            {isSubmittingComment[test.id] ? "Posting..." : "Post"}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </motion.div>
-                );
-              });
-            })()}
-            </div>
-
-            {/* Slider navigations */}
-            {testimonials.length > 2 && (
-              <div className="flex justify-end gap-2 mt-4 pt-2">
-                <button
-                  onClick={() => setStoryIndex(prev => (prev - 1 + testimonials.length) % testimonials.length)}
-                  className="p-2 border border-white/10 hover:border-white/30 text-[#E4E3E0] hover:bg-white/10 transition-all text-xs cursor-pointer"
-                  title="Previous Success Story"
-                >
-                  <ChevronLeft size={16} />
-                </button>
-                <button
-                  onClick={() => setStoryIndex(prev => (prev + 1) % testimonials.length)}
-                  className="p-2 border border-white/10 hover:border-white/30 text-[#E4E3E0] hover:bg-white/10 transition-all text-xs cursor-pointer"
-                  title="Next Success Story"
-                >
-                  <ChevronRight size={16} />
-                </button>
+                {/* Slider navigations */}
+                {testimonials.length > 2 && (
+                  <div className="flex justify-end gap-2 mt-4 pt-2">
+                    <button
+                      onClick={() => setStoryIndex(prev => (prev - 1 + testimonials.length) % testimonials.length)}
+                      className="p-2 border border-white/10 hover:border-white/30 text-[#E4E3E0] hover:bg-white/10 transition-all text-xs cursor-pointer"
+                      title="Previous Success Story"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <button
+                      onClick={() => setStoryIndex(prev => (prev + 1) % testimonials.length)}
+                      className="p-2 border border-white/10 hover:border-white/30 text-[#E4E3E0] hover:bg-white/10 transition-all text-xs cursor-pointer"
+                      title="Next Success Story"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="p-8 border border-white/10 text-center flex flex-col items-center justify-center space-y-4">
+                <Quote className="text-white/20" size={32} />
+                <p className="text-sm font-serif italic text-white/70 max-w-md bg-transparent">
+                  No breakthrough milestones have been published yet. Be the first to lift up brothers and share your steps of perseverance home.
+                </p>
               </div>
             )}
           </div>
+
+          {/* Right Column: Recent Activity Feed (Col Span 1) */}
+          <div className="lg:col-span-1 border-t lg:border-t-0 lg:border-l border-[#E4E3E0]/15 pt-6 lg:pt-0 lg:pl-8 flex flex-col justify-between">
+            <div className="space-y-4 flex-1">
+              <div className="flex justify-between items-center">
+                <h4 className="text-[10px] uppercase font-mono tracking-widest text-[#E4E3E0]/60 font-black flex items-center gap-2">
+                  <Activity size={12} className="text-amber-400" /> Recent Interactions
+                </h4>
+                {activities.length > 0 && (
+                  <button
+                    onClick={() => {
+                      if (user?.id) {
+                        const empty: ActivityItem[] = [];
+                        setActivities(empty);
+                        localStorage.setItem(`recent_activities_${user.id}`, JSON.stringify(empty));
+                      }
+                    }}
+                    className="text-[9px] uppercase font-mono text-[#E4E3E0]/40 hover:text-[#E4E3E0] transition-colors cursor-pointer tracking-wider font-bold"
+                  >
+                    Clear Stream
+                  </button>
+                )}
+              </div>
+
+              {activities.length === 0 ? (
+                <div className="p-4 border border-white/5 rounded-sm bg-white/5 space-y-2 text-left">
+                  <p className="text-xs text-[#E4E3E0]/50 font-sans">
+                    No active updates logged in your current browser session.
+                  </p>
+                  <p className="text-[10px] text-amber-300 font-mono leading-relaxed font-bold">
+                    → Try sending a Kite, celebrating a success story, or linking with a connection below to see live updates populate.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4 max-h-[300px] overflow-y-auto pr-1 select-none custom-scrollbar relative pl-3">
+                  {/* Vertical Timeline Thread Line */}
+                  <div className="absolute left-1.5 top-2 bottom-2 w-0.5 bg-gradient-to-b from-amber-400/50 via-white/10 to-transparent" />
+
+                  {activities.map((act) => {
+                    let bulletColor = 'bg-gray-400';
+                    let typeLabel = 'Update';
+                    if (act.type === 'connection') {
+                      bulletColor = 'bg-emerald-400';
+                      typeLabel = 'Net Link';
+                    } else if (act.type === 'kite') {
+                      bulletColor = 'bg-cyan-400';
+                      typeLabel = 'Direct Message';
+                    } else if (act.type === 'story') {
+                      bulletColor = 'bg-purple-400';
+                      typeLabel = 'Publishing';
+                    } else if (act.type === 'comment') {
+                      bulletColor = 'bg-amber-400';
+                      typeLabel = 'Feedback';
+                    } else if (act.type === 'like') {
+                      bulletColor = 'bg-rose-400';
+                      typeLabel = 'Celebration';
+                    }
+
+                    return (
+                      <div key={act.id} className="relative group/act text-left">
+                        {/* Timeline node bullet */}
+                        <div className={`absolute -left-[19px] top-1.5 w-2.5 h-2.5 rounded-full ${bulletColor} ring-4 ring-[#141414] transition-transform group-hover/act:scale-110`} />
+                        
+                        <div className="space-y-1">
+                          <div className="flex justify-between items-baseline gap-2">
+                            <span className="text-[8px] font-mono tracking-wider text-amber-300 font-bold uppercase">
+                              {typeLabel}
+                            </span>
+                            <span className="text-[9px] text-[#E4E3E0]/40 font-mono shrink-0 font-bold">
+                              {formatRelativeTime(act.timestamp)}
+                            </span>
+                          </div>
+                          <h5 className="text-xs font-serif italic text-[#E4E3E0] font-bold">
+                            {act.title}
+                          </h5>
+                          <p className="text-[11px] leading-relaxed text-[#E4E3E0]/70 font-sans font-medium">
+                            {act.description}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
-      )}
+      </div>
 
       <div className="space-y-6">
         <div className="relative">

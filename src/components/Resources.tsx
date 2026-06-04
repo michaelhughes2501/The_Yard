@@ -57,7 +57,7 @@ const ResourceCard = ({ item, icon: Icon, type }: { item: any, icon: any, type: 
   </motion.div>
 );
 
-export default function Resources() {
+export default function Resources({ initialShowAddPO = false }: { initialShowAddPO?: boolean }) {
   const { token } = useAuth();
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selfHelpTopic, setSelfHelpTopic] = useState('');
@@ -65,7 +65,14 @@ export default function Resources() {
   const [isLoading, setIsLoading] = useState(false);
 
   const [officers, setOfficers] = useState<ParoleOfficer[]>([]);
-  const [showAddPO, setShowAddPO] = useState(false);
+  const [showAddPO, setShowAddPO] = useState(initialShowAddPO);
+
+  useEffect(() => {
+    if (initialShowAddPO) {
+      setShowAddPO(true);
+      setSelectedCategory('all'); // Make sure it's visible under "all" or "parole"
+    }
+  }, [initialShowAddPO]);
   const [poName, setPoName] = useState('');
   const [poAgency, setPoAgency] = useState('');
   const [poPhone, setPoPhone] = useState('');

@@ -43,12 +43,15 @@ import AdminDashboard from './components/AdminDashboard';
 import HelpCenter from './components/HelpCenter';
 import CaseTracker from './components/CaseTracker';
 import WorkspaceHub from './components/WorkspaceHub';
+import QuickActions from './components/QuickActions';
 
 type Tab = 'yard' | 'kites' | 'resources' | 'tools' | 'forum' | 'mentorship' | 'vault' | 'profile' | 'opportunities' | 'admin' | 'help' | 'cases' | 'workspace';
 
 function MainApp() {
   const { user, token, logout, isLoading } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('yard');
+  const [opportunitiesSubTab, setOpportunitiesSubTab] = useState<'jobs' | 'housing' | 'tracker'>('jobs');
+  const [resourcesShowAddPO, setResourcesShowAddPO] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -120,12 +123,12 @@ function MainApp() {
   const renderContent = () => {
     switch (activeTab) {
       case 'yard': return <TheYard />;
-      case 'opportunities': return <Opportunities />;
+      case 'opportunities': return <Opportunities initialTab={opportunitiesSubTab} />;
       case 'forum': return <Forum />;
       case 'kites': return <Kites onNavigate={(tab: Tab) => setActiveTab(tab)} />;
       case 'mentorship': return <MentorshipTab />;
       case 'vault': return <Vault />;
-      case 'resources': return <Resources />;
+      case 'resources': return <Resources initialShowAddPO={resourcesShowAddPO} />;
       case 'tools': return <Tools />;
       case 'cases': return <CaseTracker />;
       case 'workspace': return <WorkspaceHub />;
@@ -160,7 +163,15 @@ function MainApp() {
             {tabs.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as Tab)}
+                onClick={() => {
+                  if (tab.id === 'opportunities') {
+                    setOpportunitiesSubTab('jobs');
+                  }
+                  if (tab.id === 'resources') {
+                    setResourcesShowAddPO(false);
+                  }
+                  setActiveTab(tab.id as Tab);
+                }}
                 className={cn(
                   "text-xs font-medium uppercase tracking-widest transition-all hover:opacity-100",
                   activeTab === tab.id ? "opacity-100 border-b-2 border-[#141414]" : "opacity-40"
@@ -283,6 +294,12 @@ function MainApp() {
                 <button
                   key={tab.id}
                   onClick={() => {
+                    if (tab.id === 'opportunities') {
+                      setOpportunitiesSubTab('jobs');
+                    }
+                    if (tab.id === 'resources') {
+                      setResourcesShowAddPO(false);
+                    }
                     setActiveTab(tab.id as Tab);
                     setIsMenuOpen(false);
                   }}
@@ -344,6 +361,21 @@ function MainApp() {
       </main>
 
       <SOSButton />
+
+      <QuickActions 
+        onAction={(action: 'jobs' | 'housing' | 'contact') => {
+          if (action === 'jobs') {
+            setOpportunitiesSubTab('jobs');
+            setActiveTab('opportunities');
+          } else if (action === 'housing') {
+            setOpportunitiesSubTab('housing');
+            setActiveTab('opportunities');
+          } else if (action === 'contact') {
+            setResourcesShowAddPO(true);
+            setActiveTab('resources');
+          }
+        }}
+      />
 
       {isSearchOpen && (
         <GlobalSearch 
