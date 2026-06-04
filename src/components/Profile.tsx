@@ -1,7 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import { User } from '../types';
-import { UserCircle, MapPin, Building, Shield, EyeOff, Save, Camera, Upload, X, Loader2 } from 'lucide-react';
+import { 
+  UserCircle, MapPin, Building, Shield, EyeOff, Save, Camera, Upload, X, Loader2,
+  CheckCircle2, AlertCircle, Plus, Trash2, ArrowRight, ClipboardCheck, Briefcase, 
+  ExternalLink, RefreshCw, Award, Activity, Sparkles
+} from 'lucide-react';
+
+interface CustomGoal {
+  id: string;
+  text: string;
+  completed: boolean;
+}
+
+const defaultCustomGoals: CustomGoal[] = [
+  { id: 'custom-1', text: 'Apply for stable, felony-friendly housing accommodations', completed: false },
+  { id: 'custom-2', text: 'Schedule a check-in with your assigned Parole/Probation Officer', completed: false },
+  { id: 'custom-3', text: 'Open a local personal transition bank checking account', completed: false }
+];
 
 export default function Profile() {
   const { user, token, updateUser } = useAuth();
@@ -17,6 +33,96 @@ export default function Profile() {
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+
+  // Reintegration tracker states
+  const [tasksData, setTasksData] = useState<{
+    documents: any[];
+    cases: any[];
+    mentorships: any[];
+    jobApplications: any[];
+    loading: boolean;
+  }>({
+    documents: [],
+    cases: [],
+    mentorships: [],
+    jobApplications: [],
+    loading: true
+  });
+
+  const [customGoals, setCustomGoals] = useState<CustomGoal[]>([]);
+  const [newGoalText, setNewGoalText] = useState('');
+  const [profileFocusTab, setProfileFocusTab] = useState<'dynamic' | 'custom'>('dynamic');
+
+  const fetchTrackerData = async () => {
+    if (!token) return;
+    try {
+      const headers = { Authorization: `Bearer ${token}` };
+      const [docsRes, casesRes, mentorsRes, jobsRes] = await Promise.all([
+        fetch('/api/documents', { headers }).then(r => r.ok ? r.json() : []),
+        fetch('/api/legal-cases', { headers }).then(r => r.ok ? r.json() : []),
+        fetch('/api/mentorships', { headers }).then(r => r.ok ? r.json() : []),
+        fetch('/api/job-applications', { headers }).then(r => r.ok ? r.json() : [])
+      ]);
+      
+      setTasksData({
+        documents: Array.isArray(docsRes) ? docsRes : [],
+        cases: Array.isArray(casesRes) ? casesRes : [],
+        mentorships: Array.isArray(mentorsRes) ? mentorsRes : [],
+        jobApplications: Array.isArray(jobsRes) ? jobsRes : [],
+        loading: false
+      });
+    } catch (err) {
+      console.error("Error fetching integration tracker data:", err);
+      setTasksData(prev => ({ ...prev, loading: false }));
+    }
+  };
+
+  useEffect(() => {
+    if (user?.id) {
+      const storageKey = `profile_custom_goals_${user.id}`;
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        try {
+          setCustomGoals(JSON.parse(saved));
+        } catch (e) {
+          setCustomGoals(defaultCustomGoals);
+        }
+      } else {
+        setCustomGoals(defaultCustomGoals);
+        localStorage.setItem(storageKey, JSON.stringify(defaultCustomGoals));
+      }
+    }
+  }, [user?.id]);
+
+  const saveCustomGoals = (updated: CustomGoal[]) => {
+    setCustomGoals(updated);
+    if (user?.id) {
+      localStorage.setItem(`profile_custom_goals_${user.id}`, JSON.stringify(updated));
+    }
+  };
+
+  const handleToggleCustomGoal = (goalId: string) => {
+    const updated = customGoals.map(g => g.id === goalId ? { ...g, completed: !g.completed } : g);
+    saveCustomGoals(updated);
+  };
+
+  const handleAddCustomGoal = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newGoalText.trim()) return;
+    const newGoal: CustomGoal = {
+      id: 'g-' + Math.random().toString(36).substring(2, 9),
+      text: newGoalText.trim(),
+      completed: false
+    };
+    const updated = [...customGoals, newGoal];
+    saveCustomGoals(updated);
+    setNewGoalText('');
+  };
+
+  const handleDeleteCustomGoal = (goalId: string) => {
+    const updated = customGoals.filter(g => g.id !== goalId);
+    saveCustomGoals(updated);
+  };
 
   useEffect(() => {
     if (token) {
@@ -34,6 +140,7 @@ export default function Profile() {
           hide_history: !!data.hide_history
         });
       });
+      fetchTrackerData();
     }
   }, [token]);
 
@@ -176,6 +283,81 @@ export default function Profile() {
   };
 
   if (!profile) return <div className="p-8 text-center opacity-60">Loading profile...</div>;
+
+  const autoGoals = [
+    {
+      id: 'doc-id',
+      text: "Upload transition photo ID or driver license",
+      category: "Document Vault",
+      description: "Establish identification by uploading your State ID, Driver's License, or equivalent documentation to coordinate housing, social security, or banking access.",
+      completed: tasksData.documents.some(d => d.category === 'ID' || d.title.toLowerCase().includes('id') || d.file_name.toLowerCase().includes('id') || d.title.toLowerCase().includes('license')),
+      tab: "vault" as const,
+      verificationMessage: "Auto-verified: ID file found in Vault"
+    },
+    {
+      id: 'doc-resume',
+      text: "Store transition-ready professional Resume draft",
+      category: "Document Vault",
+      description: "Formulate a digital copy of your work resume inside the document repository to quickly attach to job postings or send to employers.",
+      completed: tasksData.documents.some(d => d.category === 'Resume' || d.title.toLowerCase().includes('resume') || d.file_name.toLowerCase().includes('resume')),
+      tab: "vault" as const,
+      verificationMessage: "Auto-verified: Resume file logged in Vault"
+    },
+    {
+      id: 'doc-cert',
+      text: "Keep earned course certificates or milestones proof",
+      category: "Document Vault",
+      description: "Organize re-entry group training milestones, computer literacy credentials, or community transition achievements in your records.",
+      completed: tasksData.documents.some(d => d.category === 'Certificate' || d.title.toLowerCase().includes('certificate') || d.file_name.toLowerCase().includes('cert') || d.title.toLowerCase().includes('diploma')),
+      tab: "vault" as const,
+      verificationMessage: "Auto-verified: Certificate documented in Vault"
+    },
+    {
+      id: 'case-log',
+      text: "Establish list of files inside Case Tracker",
+      category: "Case Tracker",
+      description: "Review, align, and organize your files by logging at least one legal case entry within the peer-supported Case Tracker tracker.",
+      completed: tasksData.cases.length > 0,
+      tab: "cases" as const,
+      verificationMessage: `Auto-verified: ${tasksData.cases.length} case${tasksData.cases.length === 1 ? '' : 's'} registered`
+    },
+    {
+      id: 'case-hearing',
+      text: "Maintain scheduled court dates and calendar events",
+      category: "Case Tracker",
+      description: "Verify that upcoming scheduled events or hearing dates are logged to trigger automatic calendar sync and Gmail summaries.",
+      completed: tasksData.cases.some(c => c.next_hearing_date && c.next_hearing_date.trim() !== ''),
+      tab: "cases" as const,
+      verificationMessage: "Auto-verified: Active hearings scheduled"
+    },
+    {
+      id: 'case-closed',
+      text: "Resolve cases or progress to probation milestones",
+      category: "Case Tracker",
+      description: "Move case statuses to 'Closed / Resolved' or 'On Probation' to check off major transition milestones.",
+      completed: tasksData.cases.some(c => c.status === 'closed' || c.status === 'probation'),
+      tab: "cases" as const,
+      verificationMessage: "Auto-verified: Resolved/Probation case found"
+    },
+    {
+      id: 'mentor-match',
+      text: "Connect and align with a re-entry mentor",
+      category: "Social Alignment",
+      description: "Find strength in peer-facilitator instruction by linking an active mentorship connection in the Mentorship module.",
+      completed: tasksData.mentorships.some(m => m.status === 'active' || m.status === 'completed'),
+      tab: "mentorship" as const,
+      verificationMessage: "Auto-verified: Peer mentor match active"
+    },
+    {
+      id: 'job-app',
+      text: "Record an active job application on Opportunities",
+      category: "Social Alignment",
+      description: "Track and log of felony-friendly transitions by maintaining submitted job records under the Opportunities tracker.",
+      completed: tasksData.jobApplications.length > 0,
+      tab: "opportunities" as const,
+      verificationMessage: `Auto-verified: ${tasksData.jobApplications.length} application${tasksData.jobApplications.length === 1 ? '' : 's'} saved`
+    }
+  ];
 
   return (
     <div className="max-w-3xl mx-auto space-y-8">
@@ -379,6 +561,242 @@ export default function Profile() {
                 </p>
               </div>
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* REINTEGRATION GOALS DASHBOARD */}
+      <div className="bg-[#141414] text-[#E4E3E0] p-8 border border-[#141414] space-y-6">
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#E4E3E0]/20 pb-4">
+          <div className="space-y-1">
+            <span className="text-[10px] uppercase font-mono tracking-widest text-[#E4E3E0]/60 flex items-center gap-1.5 font-bold">
+              <Award size={12} className="text-amber-400" /> Milestone Verification // Reentry Planner
+            </span>
+            <h3 className="text-3xl font-serif italic text-[#E4E3E0]">Transitional Alignments</h3>
+          </div>
+          <button
+            onClick={() => {
+              fetchTrackerData();
+            }}
+            disabled={tasksData.loading}
+            className="px-3 py-1.5 border border-[#E4E3E0]/20 hover:border-[#E4E3E0] hover:bg-white hover:text-[#141414] text-[10px] font-mono font-bold uppercase tracking-widest transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
+          >
+            <RefreshCw size={12} className={tasksData.loading ? 'animate-spin' : ''} />
+            {tasksData.loading ? 'Refreshing...' : 'Validate Status'}
+          </button>
+        </header>
+
+        {/* Progress Card */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-white/5 border border-white/10 p-6">
+          <div className="md:col-span-1 border-b md:border-b-0 md:border-r border-white/10 pb-4 md:pb-0 md:pr-6 flex flex-col justify-center">
+            <span className="text-[9px] uppercase font-mono tracking-widest text-[#E4E3E0]/50 font-bold block mb-1">
+              Transitional Integrity Index
+            </span>
+            <div className="flex items-baseline gap-2">
+              <span className="text-5xl font-black text-amber-300 tracking-tight">
+                {(() => {
+                  const autoCompletedCount = autoGoals.filter(g => g.completed).length;
+                  const customCompletedCount = customGoals.filter(g => g.completed).length;
+                  const totalCompleted = autoCompletedCount + customCompletedCount;
+                  const total = autoGoals.length + customGoals.length;
+                  return total > 0 ? Math.round((totalCompleted / total) * 100) : 0;
+                })()}%
+              </span>
+              <span className="text-xs opacity-60 font-mono font-bold">Progress</span>
+            </div>
+          </div>
+
+          <div className="md:col-span-2 space-y-4 flex flex-col justify-center">
+            <div className="flex justify-between items-center text-xs font-mono font-bold uppercase tracking-wider">
+              <span>Verified Checkpoints</span>
+              <span className="text-amber-300">
+                {(() => {
+                  const autoCompletedCount = autoGoals.filter(g => g.completed).length;
+                  const customCompletedCount = customGoals.filter(g => g.completed).length;
+                  const totalCompleted = autoCompletedCount + customCompletedCount;
+                  const total = autoGoals.length + customGoals.length;
+                  return `${totalCompleted} / ${total} Secured`;
+                })()}
+              </span>
+            </div>
+            
+            {/* Elegant Progress bar channel */}
+            <div className="w-full bg-white/10 h-3 border border-white/5 overflow-hidden">
+              <div 
+                className="bg-gradient-to-r from-amber-400 via-yellow-300 to-emerald-400 h-full transition-all duration-700 ease-out"
+                style={{
+                  width: `${(() => {
+                    const autoCompletedCount = autoGoals.filter(g => g.completed).length;
+                    const customCompletedCount = customGoals.filter(g => g.completed).length;
+                    const totalCompleted = autoCompletedCount + customCompletedCount;
+                    const total = autoGoals.length + customGoals.length;
+                    return total > 0 ? Math.min(100, Math.max(0, Math.round((totalCompleted / total) * 100))) : 0;
+                  })()}%`
+                }}
+              />
+            </div>
+            <p className="text-[10px] leading-relaxed text-[#E4E3E0]/70 font-sans font-medium">
+              * Verification checklists combine automated system parameters (linked live to folder actions, document uploads, and mentorship agreements) together with customized self-directed milestones.
+            </p>
+          </div>
+        </div>
+
+        {/* Focus tabs selector */}
+        <div className="flex border-b border-white/10">
+          <button
+            onClick={() => setProfileFocusTab('dynamic')}
+            className={`px-4 py-2 border-b-2 text-xs font-mono font-bold uppercase tracking-widest transition-all cursor-pointer ${
+              profileFocusTab === 'dynamic'
+                ? 'border-amber-400 text-amber-300 bg-white/5'
+                : 'border-transparent text-[#E4E3E0]/60 hover:text-[#E4E3E0]'
+            }`}
+          >
+            Database Checkpoints ({autoGoals.filter(g => g.completed).length}/{autoGoals.length})
+          </button>
+          <button
+            onClick={() => setProfileFocusTab('custom')}
+            className={`px-4 py-2 border-b-2 text-xs font-mono font-bold uppercase tracking-widest transition-all cursor-pointer ${
+              profileFocusTab === 'custom'
+                ? 'border-amber-400 text-amber-300 bg-white/5'
+                : 'border-transparent text-[#E4E3E0]/60 hover:text-[#E4E3E0]'
+            }`}
+          >
+            Personal Milestones ({customGoals.filter(g => g.completed).length}/{customGoals.length})
+          </button>
+        </div>
+
+        {/* Tab contents */}
+        {profileFocusTab === 'dynamic' ? (
+          <div className="space-y-4">
+            <p className="text-xs text-[#E4E3E0]/60 italic font-serif">
+              Dynamic actions automatically indexed via database records. Keep documents updated to maintain alignment.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {autoGoals.map((g) => (
+                <div 
+                  key={g.id}
+                  className={`p-4 border transition-all ${
+                    g.completed 
+                      ? 'bg-emerald-500/10 border-emerald-500/30' 
+                      : 'bg-white/5 border-white/5 hover:border-white/15'
+                  }`}
+                >
+                  <div className="flex justify-between items-start gap-2 mb-2">
+                    <span className="text-[9px] uppercase font-mono bg-white/10 text-[#E4E3E0]/80 px-1.5 py-0.5 font-bold tracking-wider rounded-sm">
+                      {g.category}
+                    </span>
+                    {g.completed ? (
+                      <span className="text-[9px] uppercase font-mono tracking-wider font-bold text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded-sm">
+                        ✓ Secured
+                      </span>
+                    ) : (
+                      <span className="text-[9px] uppercase font-mono tracking-wider font-bold text-[#E4E3E0]/40">
+                        ○ Pending
+                      </span>
+                    )}
+                  </div>
+
+                  <h4 className={`text-sm font-serif italic font-bold mb-1.5 ${g.completed ? 'text-[#E4E3E0]' : 'text-[#E4E3E0]/95'}`}>
+                    {g.text}
+                  </h4>
+                  <p className="text-[11px] leading-relaxed text-[#E4E3E0]/60 font-sans mb-3 font-medium text-left">
+                    {g.description}
+                  </p>
+
+                  <div className="flex justify-between items-center pt-2.5 border-t border-white/5 mt-auto">
+                    {g.completed ? (
+                      <span className="text-[9px] font-mono text-emerald-300 flex items-center gap-1 font-bold">
+                        <CheckCircle2 size={10} className="text-emerald-400" />
+                        {g.verificationMessage}
+                      </span>
+                    ) : (
+                      <div className="flex items-center gap-1 text-[9px] font-mono text-amber-300 font-bold">
+                        <AlertCircle size={10} />
+                        Action needed
+                      </div>
+                    )}
+
+                    {!g.completed && (
+                      <button
+                        onClick={() => {
+                          window.dispatchEvent(new CustomEvent('changeTab', { detail: g.tab }));
+                        }}
+                        className="text-[9px] bg-white text-[#141414] hover:bg-amber-300 font-mono font-bold uppercase py-1 px-2 transition-all flex items-center gap-1 rounded-sm cursor-pointer"
+                      >
+                        Navigate <ArrowRight size={8} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-xs text-[#E4E3E0]/60 italic font-serif">
+              Track self-directed goals on your transition checklist. Create or prune targets to customize alignment.
+            </p>
+
+            {/* Custom goal list */}
+            <div className="space-y-2 max-h-[350px] overflow-y-auto pr-1">
+              {customGoals.length === 0 ? (
+                <div className="p-8 border border-white/5 rounded-sm text-center bg-white/5">
+                  <p className="text-xs text-[#E4E3E0]/50 italic pl-1 font-serif">
+                    No custom milestones logged in your profile. Add one below to track personal targets.
+                  </p>
+                </div>
+              ) : (
+                customGoals.map((g) => (
+                  <div 
+                    key={g.id}
+                    className={`flex items-center justify-between p-4 border transition-all ${
+                      g.completed
+                        ? 'bg-emerald-500/5 border-emerald-500/20 opacity-80'
+                        : 'bg-white/5 border-white/5 hover:border-white/10'
+                    }`}
+                  >
+                    <label className="flex items-center gap-3 cursor-pointer select-none flex-1 text-left">
+                      <input 
+                        type="checkbox"
+                        checked={g.completed}
+                        onChange={() => handleToggleCustomGoal(g.id)}
+                        className="w-4 h-4 accent-amber-300 cursor-pointer border-white/20 bg-transparent rounded-sm"
+                      />
+                      <span className={`text-xs font-mono tracking-wide ${g.completed ? 'line-through opacity-50 text-[#E4E3E0]' : 'text-[#E4E3E0]'}`}>
+                        {g.text}
+                      </span>
+                    </label>
+
+                    <button
+                      onClick={() => handleDeleteCustomGoal(g.id)}
+                      className="text-white/40 hover:text-red-400 p-1.5 transition-colors cursor-pointer ml-4"
+                      title="Discard target"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Form to add personal milestone */}
+            <form onSubmit={handleAddCustomGoal} className="flex gap-2 pt-3 border-t border-white/10">
+              <input 
+                type="text"
+                placeholder="Log a custom transitional goal... (e.g. Schedule parole officer check-in)"
+                value={newGoalText}
+                onChange={(e) => setNewGoalText(e.target.value)}
+                className="flex-1 bg-white/5 border border-white/10 text-[#E4E3E0] placeholder-[#E4E3E0]/40 p-2.5 text-xs focus:outline-none focus:border-white/30 rounded"
+              />
+              <button
+                type="submit"
+                disabled={!newGoalText.trim()}
+                className="bg-white hover:bg-[#E4E3E0] disabled:bg-white/20 disabled:hover:bg-white/20 text-[#141414] disabled:text-[#E4E3E0]/40 text-[10px] font-bold uppercase tracking-widest px-4 py-2.5 rounded-sm transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0"
+              >
+                <Plus size={12} /> Add Checkpoint
+              </button>
+            </form>
           </div>
         )}
       </div>

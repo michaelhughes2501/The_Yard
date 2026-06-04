@@ -243,6 +243,31 @@ db.exec(`
     FOREIGN KEY(testimonial_id) REFERENCES testimonials(id) ON DELETE CASCADE,
     FOREIGN KEY(user_id) REFERENCES users(id)
   );
+
+  CREATE TABLE IF NOT EXISTS video_calls (
+    id TEXT PRIMARY KEY,
+    caller_id TEXT,
+    receiver_id TEXT,
+    status TEXT DEFAULT 'ringing', -- ringing, connected, completed, declined, missed
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(caller_id) REFERENCES users(id),
+    FOREIGN KEY(receiver_id) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS video_signals (
+    id TEXT PRIMARY KEY,
+    call_id TEXT,
+    sender_id TEXT,
+    receiver_id TEXT,
+    type TEXT, -- offer, answer, ice-candidate
+    payload TEXT, -- JSON-stringified details
+    is_read INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(call_id) REFERENCES video_calls(id) ON DELETE CASCADE,
+    FOREIGN KEY(sender_id) REFERENCES users(id),
+    FOREIGN KEY(receiver_id) REFERENCES users(id)
+  );
 `);
 
 async function startServer() {
@@ -843,6 +868,129 @@ async function startServer() {
     );
 
     res.json({ success: true });
+  });
+
+  // --- VIDEO CHAT ENDPOINTS ---
+  // Start a video call
+  app.post("/api/video-calls", requireAuth, (req: any, res) => {
+    const { receiverId } = req.body;
+    if (!receiverId) return res.status(400).json({ error: "Missing receiverId" });
+
+    // Mark any existing calls where this user is caller or receiver as completed or missed
+    db.prepare("UPDATE video_calls SET status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE (caller_id = ? OR receiver_id = ?) AND status IN ('ringing', 'connected')").run(req.userId, req.userId);
+
+    const id = crypto.randomUUID();
+    db.prepare("INSERT INTO video_calls (id, caller_id, receiver_id, status) VALUES (?, ?, ?, 'ringing')").run(id, req.userId, receiverId);
+
+    // Create a notification for the recipient as a backup
+    const caller = db.prepare("SELECT username FROM users WHERE id = ?").get(req.userId) as any;
+    if (caller) {
+      const notifId = crypto.randomUUID();
+      db.prepare("INSERT INTO notifications (id, user_id, type, content, link) VALUES (?, ?, 'video_call', ?, 'mentorship')").run(
+        notifId, receiverId, `${caller.username} is inviting you to a live peer-to-peer video call.`
+      );
+    }
+
+    res.json({ success: true, callId: id });
+  });
+
+  // Get active incoming call for current user
+  app.get("/api/video-calls/active", requireAuth, (req: any, res) => {
+    const call = db.prepare(`
+      SELECT vc.*, u.username as caller_name 
+      FROM video_calls vc 
+      JOIN users u ON vc.caller_id = u.id 
+      WHERE vc.receiver_id = ? AND vc.status = 'ringing' 
+      ORDER BY vc.created_at DESC 
+      LIMIT 1
+    `).get(req.userId) as any;
+    
+    if (!call) {
+      // Also check if we are in an active connected call that we started or received
+      const activeCall = db.prepare(`
+        SELECT vc.*, u1.username as caller_name, u2.username as receiver_name
+        FROM video_calls vc
+        JOIN users u1 ON vc.caller_id = u1.id
+        JOIN users u2 ON vc.receiver_id = u2.id
+        WHERE (vc.caller_id = ? OR vc.receiver_id = ?) AND vc.status = 'connected'
+        ORDER BY vc.created_at DESC
+        LIMIT 1
+      `).get(req.userId, req.userId) as any;
+      
+      return res.json({ call: activeCall || null });
+    }
+    
+    res.json({ call });
+  });
+
+  // Update status of a call (answer, decline, completed, missed)
+  app.put("/api/video-calls/:id/status", requireAuth, (req: any, res) => {
+    const { status } = req.body; // connected, completed, declined, missed
+    const call = db.prepare("SELECT * FROM video_calls WHERE id = ?").get(req.params.id) as any;
+    
+    if (!call) return res.status(404).json({ error: "Call not found" });
+    if (call.caller_id !== req.userId && call.receiver_id !== req.userId) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+
+    db.prepare("UPDATE video_calls SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(status, req.params.id);
+    
+    // Clear signals if call is ending
+    if (status === 'completed' || status === 'declined' || status === 'missed') {
+      db.prepare("DELETE FROM video_signals WHERE call_id = ?").run(req.params.id);
+    }
+
+    res.json({ success: true });
+  });
+
+  // Get specific call status
+  app.get("/api/video-calls/:id", requireAuth, (req: any, res) => {
+    const call = db.prepare(`
+      SELECT vc.*, u1.username as caller_name, u2.username as receiver_name
+      FROM video_calls vc
+      JOIN users u1 ON vc.caller_id = u1.id
+      JOIN users u2 ON vc.receiver_id = u2.id
+      WHERE vc.id = ?
+    `).get(req.params.id) as any;
+    
+    if (!call) return res.status(404).json({ error: "Call not found" });
+    res.json(call);
+  });
+
+  // Post WebRTC signaling message
+  app.post("/api/video-signals", requireAuth, (req: any, res) => {
+    const { callId, receiverId, type, payload } = req.body;
+    if (!callId || !receiverId || !type || !payload) {
+      return res.status(400).json({ error: "Missing required signal fields" });
+    }
+
+    const id = crypto.randomUUID();
+    db.prepare("INSERT INTO video_signals (id, call_id, sender_id, receiver_id, type, payload) VALUES (?, ?, ?, ?, ?, ?)").run(
+      id, callId, req.userId, receiverId, type, payload
+    );
+
+    res.json({ success: true });
+  });
+
+  // Fetch pending signals for a specific call and recipient (consumes them)
+  app.get("/api/video-signals/:callId", requireAuth, (req: any, res) => {
+    // Select all unread signals sent from other user to me
+    const signals = db.prepare(`
+      SELECT * FROM video_signals 
+      WHERE call_id = ? AND receiver_id = ? AND is_read = 0 
+      ORDER BY created_at ASC
+    `).all(req.params.callId, req.userId) as any[];
+
+    if (signals.length > 0) {
+      // Mark them as read
+      db.prepare(`
+        UPDATE video_signals 
+        SET is_read = 1 
+        WHERE call_id = ? AND receiver_id = ? AND is_read = 0
+      `).run(req.params.callId, req.userId);
+    }
+
+    res.json(signals);
   });
 
   app.get("/api/kites/conversations", requireAuth, (req: any, res) => {

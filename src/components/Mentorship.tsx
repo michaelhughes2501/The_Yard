@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import { User, Mentorship } from '../types';
-import { Users, CheckCircle, XCircle, Clock, ShieldCheck, MessageSquare, X, Sparkles, Sliders, Check, TrendingUp, Info, Edit, MapPin, Building, Activity } from 'lucide-react';
+import { Users, CheckCircle, XCircle, Clock, ShieldCheck, MessageSquare, X, Sparkles, Sliders, Check, TrendingUp, Info, Edit, MapPin, Building, Activity, Video } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import VideoCallManager from './VideoCallManager';
 
 const MATCH_TAGS = [
   { id: 'tech', label: 'Tech & Coding' },
@@ -129,6 +130,9 @@ export default function MentorshipTab() {
   const [selectedMentor, setSelectedMentor] = useState<User | null>(null);
   const [requestMessage, setRequestMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Active call target state for initiator call overlay
+  const [activeCallTarget, setActiveCallTarget] = useState<{ id: string; username: string } | null>(null);
 
   // Profile data for matchmaking
   const [userProfile, setUserProfile] = useState<User | null>(null);
@@ -390,10 +394,18 @@ export default function MentorshipTab() {
                   <div className="text-[10px] uppercase tracking-widest opacity-60 mb-2">Your Mentor</div>
                   <div className="text-2xl font-serif italic mb-4">{m.mentor_name}</div>
                   <div className="flex justify-between items-center">
-                    <button className="text-xs uppercase tracking-widest flex items-center gap-2 hover:opacity-80">
-                      <MessageSquare size={14} /> Send Kite
-                    </button>
-                    <button onClick={() => updateStatus(m.id, 'completed')} className="text-xs uppercase tracking-widest opacity-60 hover:opacity-100">
+                    <div className="flex gap-4">
+                      <button className="text-xs uppercase tracking-widest flex items-center gap-2 hover:opacity-80">
+                        <MessageSquare size={14} /> Send Kite
+                      </button>
+                      <button 
+                        onClick={() => setActiveCallTarget({ id: m.mentor_id, username: m.mentor_name })} 
+                        className="text-xs uppercase tracking-widest flex items-center gap-2 text-amber-400 hover:text-amber-300 font-bold cursor-pointer"
+                      >
+                        <Video size={14} /> Video Call
+                      </button>
+                    </div>
+                    <button onClick={() => updateStatus(m.id, 'completed')} className="text-xs uppercase tracking-widest opacity-60 hover:opacity-100 cursor-pointer">
                       Mark Completed
                     </button>
                   </div>
@@ -404,10 +416,18 @@ export default function MentorshipTab() {
                   <div className="text-[10px] uppercase tracking-widest opacity-60 mb-2">Your Mentee</div>
                   <div className="text-2xl font-serif italic mb-4">{m.mentee_name}</div>
                   <div className="flex justify-between items-center">
-                    <button className="text-xs uppercase tracking-widest flex items-center gap-2 hover:opacity-80">
-                      <MessageSquare size={14} /> Send Kite
-                    </button>
-                    <button onClick={() => updateStatus(m.id, 'completed')} className="text-xs uppercase tracking-widest opacity-60 hover:opacity-100">
+                    <div className="flex gap-4">
+                      <button className="text-xs uppercase tracking-widest flex items-center gap-2 hover:opacity-80">
+                        <MessageSquare size={14} /> Send Kite
+                      </button>
+                      <button 
+                        onClick={() => setActiveCallTarget({ id: m.mentee_id, username: m.mentee_name })} 
+                        className="text-xs uppercase tracking-widest flex items-center gap-2 text-amber-600 hover:text-amber-500 font-bold cursor-pointer"
+                      >
+                        <Video size={14} /> Video Call
+                      </button>
+                    </div>
+                    <button onClick={() => updateStatus(m.id, 'completed')} className="text-xs uppercase tracking-widest opacity-60 hover:opacity-100 cursor-pointer">
                       Mark Completed
                     </button>
                   </div>
@@ -773,6 +793,12 @@ export default function MentorshipTab() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Video Call backdrop overlay controller */}
+      <VideoCallManager 
+        initialCallTarget={activeCallTarget} 
+        onClose={() => setActiveCallTarget(null)} 
+      />
     </div>
   );
 }
