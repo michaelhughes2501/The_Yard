@@ -10,8 +10,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Initialize Database
-const dbDir = path.join(__dirname, 'data');
-if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir);
+const dbDir = path.join(process.cwd(), 'data');
+if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
 const db = new Database(path.join(dbDir, 'app.db'));
 
 try {
@@ -1382,9 +1382,10 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     // Production static serving
-    app.use(express.static(path.join(__dirname, "dist")));
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
     app.get("*", (req, res) => {
-      res.sendFile(path.join(__dirname, "dist", "index.html"));
+      res.sendFile(path.join(distPath, "index.html"));
     });
   }
 
