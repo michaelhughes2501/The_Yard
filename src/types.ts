@@ -11,6 +11,10 @@ export interface User {
   hide_location?: number;
   hide_history?: number;
   is_admin?: number;
+  public_status?: string;
+  interests?: string;
+  looking_to_meet?: boolean;
+  wellness_reminders?: boolean;
 }
 
 export interface Job {

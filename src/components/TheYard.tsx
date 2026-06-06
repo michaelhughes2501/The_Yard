@@ -109,8 +109,86 @@ export default function TheYard() {
   const [users, setUsers] = useState<User[]>([]);
   const [search, setSearch] = useState('');
   const [connectedIds, setConnectedIds] = useState<string[]>([]);
-  const [filterMode, setFilterMode] = useState<'all' | 'connections'>('all');
+  const [filterMode, setFilterMode] = useState<'all' | 'connections' | 'meet'>('all');
   const { token, user } = useAuth();
+
+  // Your personal Yard presence states
+  const [currentUserProfile, setCurrentUserProfile] = useState<User | null>(null);
+  const [isEditingPresence, setIsEditingPresence] = useState(false);
+  const [presenceForm, setPresenceForm] = useState({
+    public_status: '',
+    interests: '',
+    looking_to_meet: false
+  });
+
+  const fetchUsers = () => {
+    fetch('/api/users', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (Array.isArray(data)) {
+        setUsers(data);
+      } else {
+        console.error('Expected array of users, got:', data);
+      }
+    })
+    .catch(console.error);
+  };
+
+  const fetchCurrentUserProfile = () => {
+    fetch('/api/users/profile', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    .then(res => res.json())
+    .then(data => {
+      setCurrentUserProfile(data);
+      setPresenceForm({
+        public_status: data.public_status || '',
+        interests: data.interests || '',
+        looking_to_meet: !!data.looking_to_meet
+      });
+    })
+    .catch(console.error);
+  };
+
+  const handleSavePresence = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/users/profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          ...currentUserProfile,
+          public_status: presenceForm.public_status,
+          interests: presenceForm.interests,
+          looking_to_meet: presenceForm.looking_to_meet
+        })
+      });
+      if (res.ok) {
+        setIsEditingPresence(false);
+        fetchCurrentUserProfile();
+        fetchUsers();
+        alert('Your Yard presence has been updated successfully!');
+        
+        logActivity(
+          'system',
+          'Yard Status Synchronized',
+          presenceForm.public_status 
+            ? `Broadcasted physical meet update: "${presenceForm.public_status}"`
+            : `Updated your Yard interests to: "${presenceForm.interests}"`
+        );
+      } else {
+        alert('Failed to update your Yard presence.');
+      }
+    } catch (err) {
+      console.error('Error saving Yard presence:', err);
+      alert('An error occurred while saving your presence.');
+    }
+  };
 
   // User's Recent Activities
   const [activities, setActivities] = useState<ActivityItem[]>([]);
@@ -294,18 +372,10 @@ export default function TheYard() {
 
   useEffect(() => {
     // Fetch all users list
-    fetch('/api/users', {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    .then(res => res.json())
-    .then(data => {
-      if (Array.isArray(data)) {
-        setUsers(data);
-      } else {
-        console.error('Expected array of users, got:', data);
-      }
-    })
-    .catch(console.error);
+    fetchUsers();
+
+    // Fetch current user details
+    fetchCurrentUserProfile();
 
     // Fetch user's connection list
     fetch('/api/connections', {
@@ -465,14 +535,20 @@ export default function TheYard() {
   };
 
   const finalFilteredUsers = users
-    .filter(u => filterMode === 'all' || connectedIds.includes(u.id))
+    .filter(u => {
+      if (filterMode === 'connections') return connectedIds.includes(u.id);
+      if (filterMode === 'meet') return u.looking_to_meet === true;
+      return true;
+    })
     .map(u => ({
       ...u,
       relevance: calculateRelevanceScore(u, search, {
         name: 3,
         history: 2, // facility
         location: 2,
-        bio: 1
+        bio: 1,
+        public_status: 1,
+        interests: 1
       })
     }))
     .filter(u => search.trim() === '' || u.relevance > 0)
@@ -489,6 +565,122 @@ export default function TheYard() {
           Find the people you walked the line with. Search by facility, name, or location.
         </p>
       </header>
+
+      {/* Dynamic Your Yard Presence Section */}
+      <div className="bg-white border-2 border-[#141414] p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#141414]/15 pb-4">
+          <div className="space-y-1">
+            <span className="text-[10px] uppercase font-mono tracking-widest text-gray-500 font-bold flex items-center gap-1.5">
+              <Activity size={12} className="text-[#141414]" /> Broadcast Your Mind // The Yard Status
+            </span>
+            <h3 className="text-2xl font-serif italic font-bold">Your Yard Presence</h3>
+          </div>
+          {!isEditingPresence && (
+            <button
+              onClick={() => setIsEditingPresence(true)}
+              className="px-4 py-2 border border-[#141414] hover:bg-[#141414] hover:text-[#E4E3E0] text-xs font-mono uppercase tracking-widest font-bold transition-all cursor-pointer"
+            >
+              Update Presence
+            </button>
+          )}
+        </div>
+
+        {isEditingPresence ? (
+          <form onSubmit={handleSavePresence} className="space-y-4 pt-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-[10px] uppercase tracking-wider font-bold font-mono">My Public Status Update</label>
+                <input
+                  type="text"
+                  maxLength={120}
+                  value={presenceForm.public_status}
+                  onChange={e => setPresenceForm(prev => ({ ...prev, public_status: e.target.value }))}
+                  placeholder="What's on your mind? e.g. Open to coffee around Denver or looking for CDL resources!"
+                  className="w-full bg-white border border-[#141414] p-3 text-sm focus:outline-none"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] uppercase tracking-wider font-bold font-mono">My Core Interests (Comma-separated)</label>
+                <input
+                  type="text"
+                  value={presenceForm.interests}
+                  onChange={e => setPresenceForm(prev => ({ ...prev, interests: e.target.value }))}
+                  placeholder="e.g. landscaping, technology, mentoring, fitness"
+                  className="w-full bg-white border border-[#141414] p-3 text-sm focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 py-2">
+              <input
+                type="checkbox"
+                id="presence-meet-check"
+                checked={presenceForm.looking_to_meet}
+                onChange={e => setPresenceForm(prev => ({ ...prev, looking_to_meet: e.target.checked }))}
+                className="w-4 h-4 border border-[#141414]"
+              />
+              <label htmlFor="presence-meet-check" className="text-xs font-bold font-mono uppercase tracking-wide cursor-pointer select-none">
+                🟢 I am actively looking to meet and coordinate with others in the Yard
+              </label>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-[#141414]/10">
+              <button
+                type="button"
+                onClick={() => setIsEditingPresence(false)}
+                className="px-4 py-2 border border-[#141414] text-xs font-mono uppercase tracking-widest hover:bg-gray-100 transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-6 py-2 bg-[#141414] text-[#E4E3E0] text-xs font-mono uppercase tracking-widest font-bold hover:opacity-90 transition-all cursor-pointer"
+              >
+                Save Updates
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
+            <div className="space-y-1 text-left">
+              <h4 className="text-[10px] font-mono uppercase tracking-wider text-gray-500 font-bold">Public Status Update</h4>
+              <p className="text-sm font-serif italic text-gray-800 leading-relaxed">
+                "{currentUserProfile?.public_status || "No update posted yet. Share what you are working on or need help with."}"
+              </p>
+            </div>
+
+            <div className="space-y-1 text-left">
+              <h4 className="text-[10px] font-mono uppercase tracking-wider text-gray-500 font-bold">Your Declared Interests</h4>
+              <div className="flex flex-wrap gap-1.5 pt-0.5">
+                {currentUserProfile?.interests ? (
+                  currentUserProfile.interests.split(',').map((tag, i) => (
+                    <span key={i} className="text-[10px] bg-gray-100 border border-current/10 px-2 py-0.5 font-mono uppercase font-black text-gray-600">
+                      #{tag.trim()}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-xs text-gray-400 italic">No interests declared yet.</span>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-1 text-left">
+              <h4 className="text-[10px] font-mono uppercase tracking-wider text-gray-500 font-bold">Availability Status</h4>
+              <div className="pt-0.5">
+                {currentUserProfile?.looking_to_meet ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-300 font-mono text-[10px] font-black uppercase tracking-widest">
+                    <span>🟢</span> Looking to Meet
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-gray-50 text-gray-400 border border-gray-200 font-mono text-[10px] font-black uppercase tracking-widest">
+                    <span>⚪</span> Just Browsing
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Community Milestones & Recent Activity Dashboard */}
       <div className="bg-[#141414] text-[#E4E3E0] border border-[#141414] p-8 space-y-6">
@@ -822,7 +1014,7 @@ export default function TheYard() {
         </div>
 
         {/* Elegant Connections Filter Switch */}
-        <div className="flex border border-[#141414] bg-white text-xs font-bold uppercase tracking-widest max-w-md">
+        <div className="flex border border-[#141414] bg-white text-xs font-bold uppercase tracking-widest max-w-lg">
           <button
             onClick={() => setFilterMode('all')}
             className={`flex-1 py-4 text-center border-r border-[#141414] transition-colors cursor-pointer ${
@@ -835,7 +1027,7 @@ export default function TheYard() {
           </button>
           <button
             onClick={() => setFilterMode('connections')}
-            className={`flex-1 py-4 text-center transition-colors cursor-pointer ${
+            className={`flex-1 py-4 text-center border-r border-[#141414] transition-colors cursor-pointer ${
               filterMode === 'connections'
                 ? 'bg-[#141414] text-[#E4E3E0]'
                 : 'hover:bg-gray-100 text-[#141414]'
@@ -843,14 +1035,26 @@ export default function TheYard() {
           >
             Connected ({connectedIds.length})
           </button>
+          <button
+            onClick={() => setFilterMode('meet')}
+            className={`flex-1 py-4 text-center transition-colors cursor-pointer ${
+              filterMode === 'meet'
+                ? 'bg-[#141414] text-[#E4E3E0]'
+                : 'hover:bg-gray-100 text-[#141414]'
+            }`}
+          >
+            Looking to Meet
+          </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {finalFilteredUsers.length === 0 && (
-          <div className="col-span-full p-12 text-center opacity-60 border border-dashed border-[#141414] bg-white font-serif italic">
+          <div className="col-span-full p-12 text-center opacity-60 border border-dashed border-[#141414] bg-white font-serif italic text-base">
             {filterMode === 'connections' 
               ? "You haven't connected with anyone in The Yard yet. Find peers below to build your network." 
+              : filterMode === 'meet' 
+              ? "No members are currently listed as 'Looking to Meet'. Be the first by saving your update above!"
               : "No users found. Be the first to invite your brothers."}
           </div>
         )}
@@ -862,39 +1066,67 @@ export default function TheYard() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.1 }}
-              className="group bg-white border border-[#141414] p-8 hover:bg-[#141414] hover:text-[#E4E3E0] transition-all"
+              className="group bg-white border border-[#141414] p-8 hover:bg-[#141414] hover:text-[#E4E3E0] transition-all flex flex-col justify-between"
             >
-              <div className="flex justify-between items-start mb-6">
-                <div>
-                  <h3 className="text-3xl font-serif italic mb-1">{user.name}</h3>
-                  <div className="flex items-center gap-2 text-xs uppercase tracking-widest opacity-60">
-                    <MapPin size={12} />
-                    {user.location || 'Unknown Location'}
+              <div>
+                <div className="flex justify-between items-start mb-6">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-3xl font-serif italic font-bold">{user.name}</h3>
+                      {user.looking_to_meet && (
+                        <span className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-100 group-hover:bg-emerald-500/20 text-emerald-800 group-hover:text-emerald-300 border border-emerald-300 font-mono text-[9px] font-black uppercase tracking-wider rounded">
+                          🟢 Meet Ready
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 text-xs uppercase tracking-widest opacity-60">
+                      <MapPin size={12} />
+                      {user.location || 'Unknown Location'}
+                    </div>
                   </div>
+                  <button 
+                    onClick={(e) => handleToggleConnect(e, user.id, isConnected)}
+                    title={isConnected ? 'Disconnect' : 'Connect'}
+                    className={`p-3 border rounded-full transition-colors cursor-pointer ${
+                      isConnected 
+                        ? 'bg-[#141414] text-[#E4E3E0] border-[#E4E3E0] group-hover:bg-[#E4E3E0] group-hover:text-[#141414] group-hover:border-[#141414]' 
+                        : 'border-[#141414] text-[#141414] hover:bg-[#141414] hover:text-[#E4E3E0] group-hover:border-current group-hover:hover:bg-[#E4E3E0] group-hover:hover:text-[#141414]'
+                    }`}
+                    id={`connect-btn-${user.id}`}
+                  >
+                    {isConnected ? <UserCheck size={20} /> : <UserPlus size={20} />}
+                  </button>
                 </div>
-                <button 
-                  onClick={(e) => handleToggleConnect(e, user.id, isConnected)}
-                  title={isConnected ? 'Disconnect' : 'Connect'}
-                  className={`p-3 border rounded-full transition-colors cursor-pointer ${
-                    isConnected 
-                      ? 'bg-[#141414] text-[#E4E3E0] border-[#E4E3E0] group-hover:bg-[#E4E3E0] group-hover:text-[#141414] group-hover:border-[#141414]' 
-                      : 'border-[#141414] text-[#141414] hover:bg-[#141414] hover:text-[#E4E3E0] group-hover:border-current group-hover:hover:bg-[#E4E3E0] group-hover:hover:text-[#141414]'
-                  }`}
-                  id={`connect-btn-${user.id}`}
-                >
-                  {isConnected ? <UserCheck size={20} /> : <UserPlus size={20} />}
-                </button>
-              </div>
 
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 text-sm font-mono">
-                  <History size={16} className="opacity-40" />
-                  <span className="opacity-60">Facility:</span>
-                  <span>{user.history || 'Not specified'}</span>
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-sm font-mono">
+                    <History size={16} className="opacity-40" />
+                    <span className="opacity-60">Facility:</span>
+                    <span>{user.history || 'Not specified'}</span>
+                  </div>
+                  <p className="text-sm leading-relaxed opacity-80">
+                    "{user.bio || 'No bio provided.'}"
+                  </p>
+
+                  {user.public_status && (
+                    <div className="bg-[#141414]/5 group-hover:bg-white/5 border-l-2 border-[#141414] group-hover:border-white p-3 font-serif italic text-sm text-gray-700 group-hover:text-white/90">
+                      "{user.public_status}"
+                    </div>
+                  )}
+
+                  {user.interests && (
+                    <div className="space-y-1">
+                      <span className="text-[9px] font-mono tracking-widest text-gray-400 font-bold uppercase block">Core Interests:</span>
+                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                        {user.interests.split(',').map((tag, i) => (
+                          <span key={i} className="text-[10px] bg-gray-100 group-hover:bg-white/10 text-gray-600 group-hover:text-white border border-current/10 px-2 py-0.5 font-mono uppercase font-black">
+                            #{tag.trim()}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <p className="text-sm leading-relaxed opacity-80">
-                  "{user.bio || 'No bio provided.'}"
-                </p>
               </div>
 
               <div className="mt-8 pt-6 border-t border-current/10 flex gap-4">

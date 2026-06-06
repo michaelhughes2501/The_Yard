@@ -15,7 +15,8 @@ import {
   Search,
   ShieldAlert,
   HelpCircle,
-  Globe
+  Globe,
+  HeartPulse
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
@@ -44,8 +45,9 @@ import HelpCenter from './components/HelpCenter';
 import CaseTracker from './components/CaseTracker';
 import WorkspaceHub from './components/WorkspaceHub';
 import QuickActions from './components/QuickActions';
+import MentalHealthSupport from './components/MentalHealthSupport';
 
-type Tab = 'yard' | 'kites' | 'resources' | 'tools' | 'forum' | 'mentorship' | 'vault' | 'profile' | 'opportunities' | 'admin' | 'help' | 'cases' | 'workspace';
+type Tab = 'yard' | 'kites' | 'resources' | 'tools' | 'forum' | 'mentorship' | 'vault' | 'profile' | 'opportunities' | 'admin' | 'help' | 'cases' | 'workspace' | 'mental-health';
 
 function MainApp() {
   const { user, token, logout, isLoading } = useAuth();
@@ -125,6 +127,7 @@ function MainApp() {
     { id: 'mentorship', name: 'Mentorship', icon: ShieldCheck },
     { id: 'vault', name: 'The Vault', icon: Archive },
     { id: 'resources', name: 'Resources', icon: ShieldCheck },
+    { id: 'mental-health', name: 'Wellness', icon: HeartPulse },
     { id: 'tools', name: 'Legal Tools', icon: Scale },
     { id: 'cases', name: 'Case Tracker', icon: Scale },
     { id: 'workspace', name: 'Workspace', icon: Globe },
@@ -140,6 +143,7 @@ function MainApp() {
       case 'mentorship': return <MentorshipTab />;
       case 'vault': return <Vault />;
       case 'resources': return <Resources initialShowAddPO={resourcesShowAddPO} />;
+      case 'mental-health': return <MentalHealthSupport />;
       case 'tools': return <Tools />;
       case 'cases': return <CaseTracker />;
       case 'workspace': return <WorkspaceHub />;

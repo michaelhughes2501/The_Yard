@@ -66,6 +66,37 @@ try {
   db.exec("ALTER TABLE testimonials ADD COLUMN likes_count INTEGER DEFAULT 0");
 } catch (e) {}
 
+try {
+  db.exec("ALTER TABLE users ADD COLUMN public_status TEXT");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN interests TEXT");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN looking_to_meet INTEGER DEFAULT 0");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN wellness_reminders INTEGER DEFAULT 0");
+} catch (e) {}
+
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS wellness_journals (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      title TEXT,
+      content TEXT,
+      prompt TEXT,
+      stress_level INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(user_id) REFERENCES users(id)
+    )
+  `);
+} catch (e) {}
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
@@ -75,7 +106,11 @@ db.exec(`
     facility TEXT,
     location TEXT,
     bio TEXT,
-    avatar_url TEXT
+    avatar_url TEXT,
+    public_status TEXT,
+    interests TEXT,
+    looking_to_meet INTEGER DEFAULT 0,
+    wellness_reminders INTEGER DEFAULT 0
   );
   CREATE TABLE IF NOT EXISTS password_resets (
     token TEXT PRIMARY KEY,
@@ -384,7 +419,7 @@ async function startServer() {
 
   // Data Routes
   app.get("/api/users", requireAuth, (req: any, res) => {
-    const users = db.prepare("SELECT id, username as name, facility as history, location, bio, is_mentor, hide_location, hide_history, is_admin, role, avatar_url FROM users WHERE id != ?").all(req.userId);
+    const users = db.prepare("SELECT id, username as name, facility as history, location, bio, is_mentor, hide_location, hide_history, is_admin, role, avatar_url, public_status, interests, looking_to_meet FROM users WHERE id != ?").all(req.userId);
     // Filter out hidden fields
     const sanitizedUsers = users.map((u: any) => ({
       id: u.id,
@@ -395,30 +430,39 @@ async function startServer() {
       role: u.role === 'user' && u.is_admin === 1 ? 'super_admin' : u.role,
       history: u.hide_history ? "Hidden" : u.history,
       location: u.hide_location ? "Hidden" : u.location,
-      avatar_url: u.avatar_url
+      avatar_url: u.avatar_url,
+      public_status: u.public_status || "",
+      interests: u.interests || "",
+      looking_to_meet: u.looking_to_meet === 1
     }));
     res.json(sanitizedUsers);
   });
 
   app.get("/api/users/profile", requireAuth, (req: any, res) => {
-    const user = db.prepare("SELECT id, username as name, facility as history, location, bio, is_mentor, hide_location, hide_history, is_admin, role, avatar_url FROM users WHERE id = ?").get(req.userId);
+    const user = db.prepare("SELECT id, username as name, facility as history, location, bio, is_mentor, hide_location, hide_history, is_admin, role, avatar_url, public_status, interests, looking_to_meet, wellness_reminders FROM users WHERE id = ?").get(req.userId);
     if (user) {
       (user as any).role = (user as any).role === 'user' && (user as any).is_admin === 1 ? 'super_admin' : (user as any).role;
+      (user as any).looking_to_meet = (user as any).looking_to_meet === 1;
+      (user as any).wellness_reminders = (user as any).wellness_reminders === 1;
     }
     res.json(user);
   });
 
   app.put("/api/users/profile", requireAuth, (req: any, res) => {
-    const { history, location, bio, hide_location, hide_history, avatar_url } = req.body;
-    if (avatar_url !== undefined) {
-      db.prepare("UPDATE users SET facility = ?, location = ?, bio = ?, hide_location = ?, hide_history = ?, avatar_url = ? WHERE id = ?").run(
-        history, location, bio, hide_location ? 1 : 0, hide_history ? 1 : 0, avatar_url, req.userId
-      );
-    } else {
-      db.prepare("UPDATE users SET facility = ?, location = ?, bio = ?, hide_location = ?, hide_history = ? WHERE id = ?").run(
-        history, location, bio, hide_location ? 1 : 0, hide_history ? 1 : 0, req.userId
-      );
-    }
+    const { history, location, bio, hide_location, hide_history, avatar_url, public_status, interests, looking_to_meet, wellness_reminders } = req.body;
+    
+    // Read previous row to preserve unchanged optional fields
+    const existing = db.prepare("SELECT avatar_url, public_status, interests, looking_to_meet, wellness_reminders FROM users WHERE id = ?").get(req.userId) as any;
+    
+    const final_avatar = avatar_url !== undefined ? avatar_url : (existing ? existing.avatar_url : null);
+    const final_status = public_status !== undefined ? public_status : (existing ? existing.public_status : null);
+    const final_interests = interests !== undefined ? interests : (existing ? existing.interests : null);
+    const final_looking = looking_to_meet !== undefined ? (looking_to_meet ? 1 : 0) : (existing ? existing.looking_to_meet : 0);
+    const final_wellness_reminders = wellness_reminders !== undefined ? (wellness_reminders ? 1 : 0) : (existing ? existing.wellness_reminders : 0);
+
+    db.prepare("UPDATE users SET facility = ?, location = ?, bio = ?, hide_location = ?, hide_history = ?, avatar_url = ?, public_status = ?, interests = ?, looking_to_meet = ?, wellness_reminders = ? WHERE id = ?").run(
+      history, location, bio, hide_location ? 1 : 0, hide_history ? 1 : 0, final_avatar, final_status, final_interests, final_looking, final_wellness_reminders, req.userId
+    );
     res.json({ success: true });
   });
 
@@ -1151,7 +1195,52 @@ async function startServer() {
     res.json({ success: true });
   });
 
+  // Wellness Journal Routes
+  app.get("/api/wellness/journals", requireAuth, (req: any, res) => {
+    try {
+      const journals = db.prepare("SELECT * FROM wellness_journals WHERE user_id = ? ORDER BY created_at DESC").all(req.userId);
+      res.json(journals);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/wellness/journals", requireAuth, (req: any, res) => {
+    try {
+      const { title, content, prompt, stress_level } = req.body;
+      const id = "journal-" + Math.random().toString(36).substr(2, 9);
+      db.prepare("INSERT INTO wellness_journals (id, user_id, title, content, prompt, stress_level) VALUES (?, ?, ?, ?, ?, ?)").run(
+        id, req.userId, title || "Daily Reflection", content, prompt || "", stress_level || 3
+      );
+      res.json({ success: true, id });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/notifications", requireAuth, (req: any, res) => {
+    try {
+      const u = db.prepare("SELECT wellness_reminders FROM users WHERE id = ?").get(req.userId) as any;
+      if (u && u.wellness_reminders === 1) {
+        // Check if there is already a recent reminder (last 12 hours) to avoid cluttering
+        const recentReminder = db.prepare("SELECT id FROM notifications WHERE user_id = ? AND type = 'wellness_reminder' AND timestamp > datetime('now', '-12 hours')").get(req.userId);
+        
+        if (!recentReminder) {
+          // Check if user has done any journal logs in the last 24 hours
+          const journalToday = db.prepare("SELECT id FROM wellness_journals WHERE user_id = ? AND created_at > datetime('now', '-1 day')").get(req.userId);
+          
+          if (!journalToday) {
+            const notifId = "notif-wellness-" + Math.random().toString(36).substr(2, 9);
+            db.prepare("INSERT INTO notifications (id, user_id, type, content, link, is_read) VALUES (?, ?, 'wellness_reminder', 'Daily Reflection: Take a moment for yourself. Write a journal page or run a brief breathing exercise in your Wellness Room.', 'mental-health', 0)").run(
+              notifId, req.userId
+            );
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Error generating wellness reminder:", e);
+    }
+
     const notifications = db.prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY timestamp DESC LIMIT 50").all(req.userId);
     res.json(notifications);
   });
