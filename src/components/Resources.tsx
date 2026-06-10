@@ -14,7 +14,8 @@ import {
   X,
   Filter,
   ChevronDown,
-  Trash2
+  Trash2,
+  Map as MapIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { UA_CHECK_INS, PAROLE_RESOURCES, MENTAL_HEALTH_RESOURCES } from '../constants';
@@ -23,6 +24,7 @@ import Markdown from 'react-markdown';
 import { useAuth } from '../AuthContext';
 import { ParoleOfficer } from '../types';
 import ConfirmationDialog from './ConfirmationDialog';
+import ServiceMap from './ServiceMap';
 
 const ResourceCard = ({ item, icon: Icon, type }: { item: any, icon: any, type: string }) => (
   <motion.div 
@@ -170,6 +172,7 @@ export default function Resources({ initialShowAddPO = false }: { initialShowAdd
             className="w-full appearance-none bg-white border border-[#141414] py-4 pl-12 pr-10 focus:outline-none focus:ring-2 focus:ring-[#141414]/10 cursor-pointer font-bold text-xs uppercase tracking-widest transition-all"
           >
             <option value="all">All Resources</option>
+            <option value="map">Interactive Service Map</option>
             <option value="ua">UA Check-Ins</option>
             <option value="parole">Parole & Supervision</option>
             <option value="mental_health">Mental Health</option>
@@ -180,6 +183,17 @@ export default function Resources({ initialShowAddPO = false }: { initialShowAdd
       </div>
 
       <div className="space-y-16">
+        {/* Interactive Nearby Services Map */}
+        {(selectedCategory === 'all' || selectedCategory === 'map') && (
+          <section className="space-y-6">
+            <div className="flex items-center gap-3 border-b border-[#141414]/10 pb-4">
+              <MapIcon className="text-amber-600 animate-pulse" size={28} />
+              <h3 className="text-3xl font-serif italic">Nearby Re-entry Services</h3>
+            </div>
+            <ServiceMap />
+          </section>
+        )}
+
         {/* UA Check-Ins Section */}
         {(selectedCategory === 'all' || selectedCategory === 'ua') && (
         <section>

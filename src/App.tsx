@@ -16,7 +16,11 @@ import {
   ShieldAlert,
   HelpCircle,
   Globe,
-  HeartPulse
+  HeartPulse,
+  TrendingUp,
+  Calendar,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
@@ -46,8 +50,10 @@ import CaseTracker from './components/CaseTracker';
 import WorkspaceHub from './components/WorkspaceHub';
 import QuickActions from './components/QuickActions';
 import MentalHealthSupport from './components/MentalHealthSupport';
+import EventCalendar from './components/EventCalendar';
+import ProgressTracker from './components/ProgressTracker';
 
-type Tab = 'yard' | 'kites' | 'resources' | 'tools' | 'forum' | 'mentorship' | 'vault' | 'profile' | 'opportunities' | 'admin' | 'help' | 'cases' | 'workspace' | 'mental-health';
+type Tab = 'yard' | 'kites' | 'resources' | 'tools' | 'forum' | 'mentorship' | 'vault' | 'profile' | 'opportunities' | 'admin' | 'help' | 'cases' | 'workspace' | 'mental-health' | 'calendar' | 'progress';
 
 function MainApp() {
   const { user, token, logout, isLoading } = useAuth();
@@ -58,6 +64,16 @@ function MainApp() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    return (localStorage.getItem('theme') as 'light' | 'dark') || 'light';
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.remove('light', 'dark');
+    root.classList.add(theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
 
   useEffect(() => {
     const handleTabChange = (e: Event) => {
@@ -121,6 +137,8 @@ function MainApp() {
 
   const tabs = [
     { id: 'yard', name: 'The Yard', icon: Users },
+    { id: 'progress', name: 'Progress Tracker', icon: TrendingUp },
+    { id: 'calendar', name: 'Calendar', icon: Calendar },
     { id: 'opportunities', name: 'Opportunities', icon: Briefcase },
     { id: 'forum', name: 'Forum', icon: MessageSquare },
     { id: 'kites', name: 'Kites', icon: Send },
@@ -144,6 +162,8 @@ function MainApp() {
       case 'vault': return <Vault />;
       case 'resources': return <Resources initialShowAddPO={resourcesShowAddPO} />;
       case 'mental-health': return <MentalHealthSupport />;
+      case 'calendar': return <EventCalendar />;
+      case 'progress': return <ProgressTracker />;
       case 'tools': return <Tools />;
       case 'cases': return <CaseTracker />;
       case 'workspace': return <WorkspaceHub />;
@@ -167,6 +187,14 @@ function MainApp() {
 
         {/* Desktop Nav */}
           <div className="hidden md:flex gap-6 items-center flex-wrap justify-center">
+            <button 
+              onClick={() => setTheme(prev => prev === 'light' ? 'dark' : 'light')}
+              className="p-2 hover:bg-[#141414]/5 rounded-full transition-colors opacity-65 hover:opacity-100"
+              title={theme === 'light' ? 'Dark Mode' : 'Light Mode'}
+            >
+              {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
+            </button>
+
             <button 
               onClick={() => setIsSearchOpen(true)}
               className="p-2 hover:bg-[#141414]/5 rounded-full transition-colors opacity-60 hover:opacity-100"
@@ -304,7 +332,14 @@ function MainApp() {
             exit={{ opacity: 0, y: -20 }}
             className="md:hidden fixed inset-0 z-40 bg-[#E4E3E0] pt-24 px-8"
           >
-            <div className="flex flex-col gap-8">
+            <div className="flex flex-col gap-8 max-h-[85vh] overflow-y-auto pb-10">
+              <button 
+                onClick={() => { setTheme(prev => prev === 'light' ? 'dark' : 'light'); setIsMenuOpen(false); }}
+                className="text-3xl font-serif italic text-left border-b border-[#141414]/10 pb-4 flex items-center justify-between"
+              >
+                <span>{theme === 'light' ? 'Activate Dark' : 'Activate Light'}</span>
+                {theme === 'light' ? <Moon size={24} /> : <Sun size={24} />}
+              </button>
               {tabs.map((tab) => (
                 <button
                   key={tab.id}

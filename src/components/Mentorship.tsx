@@ -130,6 +130,7 @@ export default function MentorshipTab() {
   const [selectedMentor, setSelectedMentor] = useState<User | null>(null);
   const [requestMessage, setRequestMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAnonymous, setIsAnonymous] = useState(false);
   
   // Active call target state for initiator call overlay
   const [activeCallTarget, setActiveCallTarget] = useState<{ id: string; username: string } | null>(null);
@@ -280,7 +281,8 @@ export default function MentorshipTab() {
         },
         body: JSON.stringify({ 
           mentorId: selectedMentor.id,
-          message: requestMessage
+          message: requestMessage,
+          isAnonymous: isAnonymous
         })
       });
       if (!res.ok) {
@@ -290,6 +292,7 @@ export default function MentorshipTab() {
       setRequestModalOpen(false);
       setSelectedMentor(null);
       setRequestMessage('');
+      setIsAnonymous(false);
       fetchData();
     } catch (err: any) {
       alert(err.message);
@@ -307,6 +310,7 @@ export default function MentorshipTab() {
     });
     intro += `\nI'm looking forward to learning from your experiences and connecting on my transitional journey. Thanks!`;
     setRequestMessage(intro);
+    setIsAnonymous(false);
     setRequestModalOpen(true);
   };
 
@@ -366,14 +370,21 @@ export default function MentorshipTab() {
               <div className="space-y-4">
                 {pendingIncoming.map(m => (
                   <div key={m.id} className="bg-white border border-[#141414] p-4 flex justify-between items-center">
-                    <div>
-                      <span className="font-bold">{m.mentee_name}</span> wants you as a mentor.
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                      <div>
+                        <span className="font-bold">{m.mentee_name}</span> wants you as a mentor.
+                      </div>
+                      {m.is_anonymous === 1 && (
+                        <span className="inline-flex items-center gap-1 text-[9px] font-mono uppercase tracking-widest font-black bg-amber-100 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded-sm self-start sm:self-auto">
+                          Anonymous Query
+                        </span>
+                      )}
                     </div>
                     <div className="flex gap-2">
-                      <button onClick={() => updateStatus(m.id, 'active')} className="p-2 hover:bg-green-100 text-green-700 rounded-full">
+                      <button onClick={() => updateStatus(m.id, 'active')} className="p-2 hover:bg-green-100 text-green-700 rounded-full border border-green-200 select-none cursor-pointer">
                         <CheckCircle size={20} />
                       </button>
-                      <button onClick={() => updateStatus(m.id, 'declined')} className="p-2 hover:bg-red-100 text-red-700 rounded-full">
+                      <button onClick={() => updateStatus(m.id, 'declined')} className="p-2 hover:bg-red-100 text-red-700 rounded-full border border-red-200 select-none cursor-pointer">
                         <XCircle size={20} />
                       </button>
                     </div>
@@ -390,8 +401,15 @@ export default function MentorshipTab() {
             </h3>
             <div className="space-y-4">
               {myMentors.map(m => (
-                <div key={m.id} className="bg-[#141414] text-[#E4E3E0] p-6">
-                  <div className="text-[10px] uppercase tracking-widest opacity-60 mb-2">Your Mentor</div>
+                <div key={m.id} className="bg-[#141414] text-[#E4E3E0] p-6 relative">
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="text-[10px] uppercase tracking-widest opacity-60">Your Mentor</div>
+                    {m.is_anonymous === 1 && (
+                      <span className="text-[9px] font-mono bg-white/10 text-amber-300 px-2 py-0.5 rounded-sm font-bold uppercase tracking-wider">
+                        Connected Anonymously
+                      </span>
+                    )}
+                  </div>
                   <div className="text-2xl font-serif italic mb-4">{m.mentor_name}</div>
                   <div className="flex justify-between items-center">
                     <div className="flex gap-4">
@@ -412,20 +430,33 @@ export default function MentorshipTab() {
                 </div>
               ))}
               {myMentees.map(m => (
-                <div key={m.id} className="bg-white border border-[#141414] p-6">
-                  <div className="text-[10px] uppercase tracking-widest opacity-60 mb-2">Your Mentee</div>
+                <div key={m.id} className="bg-white border border-[#141414] p-6 relative">
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="text-[10px] uppercase tracking-widest opacity-60">Your Mentee</div>
+                    {m.is_anonymous === 1 && (
+                      <span className="text-[9px] font-mono bg-neutral-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-sm font-bold uppercase tracking-wider">
+                        Anonymous Connection
+                      </span>
+                    )}
+                  </div>
                   <div className="text-2xl font-serif italic mb-4">{m.mentee_name}</div>
                   <div className="flex justify-between items-center">
                     <div className="flex gap-4">
                       <button className="text-xs uppercase tracking-widest flex items-center gap-2 hover:opacity-80">
                         <MessageSquare size={14} /> Send Kite
                       </button>
-                      <button 
-                        onClick={() => setActiveCallTarget({ id: m.mentee_id, username: m.mentee_name })} 
-                        className="text-xs uppercase tracking-widest flex items-center gap-2 text-amber-600 hover:text-amber-500 font-bold cursor-pointer"
-                      >
-                        <Video size={14} /> Video Call
-                      </button>
+                      {m.is_anonymous === 1 ? (
+                        <div className="text-[11px] text-zinc-500 flex items-center gap-1 font-medium font-mono">
+                          <Video size={14} className="opacity-60" /> Video Call Off (Anonymized)
+                        </div>
+                      ) : (
+                        <button 
+                          onClick={() => setActiveCallTarget({ id: m.mentee_id, username: m.mentee_name })} 
+                          className="text-xs uppercase tracking-widest flex items-center gap-2 text-amber-600 hover:text-amber-500 font-bold cursor-pointer"
+                        >
+                          <Video size={14} /> Video Call
+                        </button>
+                      )}
                     </div>
                     <button onClick={() => updateStatus(m.id, 'completed')} className="text-xs uppercase tracking-widest opacity-60 hover:opacity-100 cursor-pointer">
                       Mark Completed
@@ -765,25 +796,45 @@ export default function MentorshipTab() {
                     value={requestMessage}
                     onChange={(e) => setRequestMessage(e.target.value)}
                     placeholder="Introduce yourself and explain why you'd like them to be your mentor..."
-                    className="w-full border border-[#141414] p-3 min-h-[120px] focus:outline-none focus:ring-2 focus:ring-[#141414]/10 resize-y"
+                    className="w-full border border-[#141414] p-3 min-h-[120px] focus:outline-none focus:ring-2 focus:ring-[#141414]/10 resize-y font-medium text-sm"
                   />
-                  <p className="text-[10px] uppercase tracking-widest opacity-60 mt-2">
-                    This will be sent as a Kite to the mentor.
+                  <p className="text-[10px] uppercase tracking-widest opacity-50 mt-1">
+                    This will be sent as a message (Kite) to the mentor.
                   </p>
+
+                  {/* Anonymity settings toggle */}
+                  <div className="mt-4 p-3 bg-neutral-50 border border-[#141414]/10 flex flex-col gap-1.5 rounded-sm">
+                    <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={isAnonymous}
+                        onChange={(e) => setIsAnonymous(e.target.checked)}
+                        className="mt-0.5 w-4 h-4 text-[#141414] border-[#141414] rounded focus:ring-0 cursor-pointer accent-[#141414]"
+                      />
+                      <div>
+                        <span className="block text-xs uppercase tracking-wider font-bold text-[#141414]">
+                          Send Anonymously
+                        </span>
+                        <span className="block text-[10px] text-neutral-500 leading-normal mt-0.5">
+                          Hide your profile name and location. The vetted mentor will read your query and reply to you as <strong className="text-neutral-700">"Anonymous Mentee"</strong>, maintaining maximum privacy.
+                        </span>
+                      </div>
+                    </label>
+                  </div>
                 </div>
 
                 <div className="flex gap-4 pt-2">
                   <button 
                     type="submit"
                     disabled={isSubmitting}
-                    className="flex-1 bg-[#141414] text-[#E4E3E0] p-3 text-xs uppercase tracking-widest font-bold hover:opacity-90 transition-opacity disabled:opacity-50"
+                    className="flex-1 bg-[#141414] text-[#E4E3E0] p-3 text-xs uppercase tracking-widest font-bold hover:opacity-90 transition-opacity disabled:opacity-50 select-none cursor-pointer"
                   >
                     {isSubmitting ? 'Sending...' : 'Send Request'}
                   </button>
                   <button 
                     type="button"
                     onClick={() => setRequestModalOpen(false)}
-                    className="flex-1 border border-[#141414] p-3 text-xs uppercase tracking-widest font-bold hover:bg-[#141414]/5 transition-colors"
+                    className="flex-1 border border-[#141414] p-3 text-xs uppercase tracking-widest font-bold hover:bg-[#141414]/5 transition-colors select-none cursor-pointer"
                   >
                     Cancel
                   </button>

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Search, UserPlus, MapPin, History, UserCheck, Sparkles, Quote, ChevronLeft, ChevronRight, Plus, X, Heart, MessageSquare, Share2, Activity } from 'lucide-react';
+import { Search, UserPlus, MapPin, History, UserCheck, Sparkles, Quote, ChevronLeft, ChevronRight, Plus, X, Heart, MessageSquare, Share2, Activity, Briefcase, Home, Award, CheckCircle, TrendingUp, Compass } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../AuthContext';
-import { User, Testimonial } from '../types';
+import { User, Testimonial, Job, Housing } from '../types';
 import { calculateRelevanceScore } from '../utils/searchUtils';
 
 export interface ActivityItem {
@@ -111,6 +111,13 @@ export default function TheYard() {
   const [connectedIds, setConnectedIds] = useState<string[]>([]);
   const [filterMode, setFilterMode] = useState<'all' | 'connections' | 'meet'>('all');
   const { token, user } = useAuth();
+
+  // Recommended for You additional state
+  const [userMilestones, setUserMilestones] = useState<any[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [housing, setHousing] = useState<Housing[]>([]);
+  const [showCelebration, setShowCelebration] = useState(false);
+  const [celebrationMessage, setCelebrationMessage] = useState('');
 
   // Your personal Yard presence states
   const [currentUserProfile, setCurrentUserProfile] = useState<User | null>(null);
@@ -370,6 +377,58 @@ export default function TheYard() {
     }
   }, [user]);
 
+  const fetchMilestones = () => {
+    if (user?.id) {
+      const storageKey = `yard_progress_milestones_${user.id}`;
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        try {
+          setUserMilestones(JSON.parse(stored));
+        } catch (err) {
+          console.error(err);
+        }
+      } else {
+        const defaultRoadmap = [
+          { id: '1', title: 'Schedule official parole check-in', category: 'legal', difficulty: 'beginner', isCompleted: true, xpValue: 100 },
+          { id: '2', title: 'Assemble legal identification (Gov ID/DL or SSN card)', category: 'legal', difficulty: 'beginner', isCompleted: false, xpValue: 150 },
+          { id: '3', title: 'Log first daily mental checklist in Wellness journal', category: 'health', difficulty: 'beginner', isCompleted: false, xpValue: 100 },
+          { id: '4', title: 'Formally request and secure a support/transition mentor', category: 'social', difficulty: 'intermediate', isCompleted: false, xpValue: 150 },
+          { id: '5', title: 'Prepare a transitional employment resume', category: 'career', difficulty: 'beginner', isCompleted: false, xpValue: 120 },
+          { id: '6', title: 'Research and apply to 3 certified housing resources', category: 'housing', difficulty: 'intermediate', isCompleted: false, xpValue: 200 }
+        ];
+        localStorage.setItem(storageKey, JSON.stringify(defaultRoadmap));
+        setUserMilestones(defaultRoadmap);
+      }
+    }
+  };
+
+  const handleCompleteMilestone = (milestoneId: string, titleStr: string) => {
+    if (!user?.id) return;
+    const storageKey = `yard_progress_milestones_${user.id}`;
+    const stored = localStorage.getItem(storageKey);
+    if (stored) {
+      try {
+        const list = JSON.parse(stored);
+        const updated = list.map((m: any) => m.id === milestoneId ? { ...m, isCompleted: true } : m);
+        localStorage.setItem(storageKey, JSON.stringify(updated));
+        setUserMilestones(updated);
+        
+        // Show celebration alert
+        setCelebrationMessage(`🎉 Finished priority step: "${titleStr}"! Scorecard updated successfully.`);
+        setShowCelebration(true);
+        setTimeout(() => setShowCelebration(false), 3500);
+
+        logActivity(
+          'system',
+          'Milestone Completed!',
+          `Successfully checked off "${titleStr}" via Re-entry Recommendations.`
+        );
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  };
+
   useEffect(() => {
     // Fetch all users list
     fetchUsers();
@@ -391,7 +450,28 @@ export default function TheYard() {
 
     // Fetch testimonials
     fetchTestimonials();
-  }, [token]);
+
+    // Load static and local storage milestones, jobs, housing
+    fetchMilestones();
+
+    fetch('/api/jobs', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (Array.isArray(data)) setJobs(data);
+    })
+    .catch(console.error);
+
+    fetch('/api/housing', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (Array.isArray(data)) setHousing(data);
+    })
+    .catch(console.error);
+  }, [token, user]);
 
   const handleSubmitStory = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -557,6 +637,177 @@ export default function TheYard() {
       return b.relevance - a.relevance;
     });
 
+  // Extract user interests
+  const userInterests = currentUserProfile?.interests
+    ? currentUserProfile.interests.split(',').map(tag => tag.trim().toLowerCase()).filter(Boolean)
+    : [];
+
+  // Determine user focus categories (categories where there are uncompleted milestones)
+  const uncompletedMilestones = userMilestones.filter(m => !m.isCompleted);
+  const focusCategories = Array.from(new Set(uncompletedMilestones.map(m => m.category || 'career')));
+
+  // Recommendations generator
+  const getWorkspaceRecommendations = () => {
+    const list = [];
+
+    // Recommendation 1: Milestone target
+    if (uncompletedMilestones.length > 0) {
+      // Pick a beginner or beginner-difficulty milestone first
+      const nextMilestone = uncompletedMilestones.find(m => m.difficulty === 'beginner') || uncompletedMilestones[0];
+      list.push({
+        id: `rec-milestone-${nextMilestone.id}`,
+        type: 'milestone',
+        title: 'Action Recommended',
+        badge: '🎯 Direct Priority',
+        boldTitle: nextMilestone.title,
+        description: `This beginner transitional task in the ${nextMilestone.category} field matches your re-entry track timeline. Tackle this today!`,
+        actionLabel: 'Mark Complete',
+        actionData: nextMilestone.id,
+        category: nextMilestone.category,
+        meta: `Difficulty: ${nextMilestone.difficulty} // +${nextMilestone.xpValue} XP`
+      });
+    } else {
+      list.push({
+        id: 'rec-milestone-empty',
+        type: 'milestone-empty',
+        title: 'Target Acquired',
+        badge: '🏆 Track Cleared',
+        boldTitle: 'Set custom milestones next',
+        description: 'You completed your core re-entry roadmap targets! Formulate new custom microgoals in the Progress Tracker.',
+        actionLabel: 'View Progress Cards',
+        category: 'social',
+        meta: 'Member League Level High'
+      });
+    }
+
+    // Recommendation 2: Peer match
+    const otherUsers = users.filter(u => u.id !== user?.id);
+    if (otherUsers.length > 0) {
+      const scoredPeers = otherUsers.map(u => {
+        let score = 0;
+        const reasons = [];
+
+        // Availability status check
+        if (u.looking_to_meet) {
+          score += 4;
+          reasons.push('and looking to meet');
+        }
+
+        // Shared location check
+        if (currentUserProfile?.location && u.location && 
+            (u.location.toLowerCase().includes(currentUserProfile.location.toLowerCase()) || 
+             currentUserProfile.location.toLowerCase().includes(u.location.toLowerCase()))) {
+          score += 5;
+          reasons.push(`resides near ${u.location}`);
+        }
+
+        // Shared facility check
+        if (currentUserProfile?.history && u.history && 
+            u.history.toLowerCase().trim() === currentUserProfile.history.toLowerCase().trim()) {
+          score += 8;
+          reasons.push(`walked the line at ${u.history}`);
+        }
+
+        // Shared interests check
+        const peerInterests = u.interests ? u.interests.split(',').map(tag => tag.trim().toLowerCase()) : [];
+        const matchingInterests = peerInterests.filter(tag => userInterests.includes(tag));
+        if (matchingInterests.length > 0) {
+          score += matchingInterests.length * 3;
+          reasons.push(`shares interest in #${matchingInterests[0]}`);
+        }
+
+        return { userItem: u, score, reasons };
+      });
+
+      // Sort by score desc
+      const topPeers = scoredPeers.sort((a, b) => b.score - a.score);
+      const chosenPeer = topPeers[0];
+
+      if (chosenPeer && chosenPeer.score > 0) {
+        const u = chosenPeer.userItem;
+        const reasonStr = chosenPeer.reasons.length > 0
+          ? `${chosenPeer.reasons.join(', ')}.`
+          : 'Part of your community support circle.';
+
+        list.push({
+          id: `rec-peer-${u.id}`,
+          type: 'peer',
+          title: 'Peer Recommendation',
+          badge: '🤝 Support Match',
+          boldTitle: u.name,
+          description: `Recommended connection because he/she ${reasonStr}`,
+          actionLabel: 'Send Private Kite',
+          actionData: { id: u.id, name: u.name },
+          category: 'social',
+          meta: u.history ? `Facility: ${u.history}` : `Location: ${u.location || 'Colorado'}`
+        });
+      } else if (otherUsers.length > 0) {
+        // Fallback peer recommendation
+        const u = otherUsers[0];
+        list.push({
+          id: `rec-peer-fallback-${u.id}`,
+          type: 'peer',
+          title: 'Peer Connection',
+          badge: '👥 Member Radar',
+          boldTitle: u.name,
+          description: 'A fellow community alumnus with active presence in the Yard.',
+          actionLabel: 'Send Private Kite',
+          actionData: { id: u.id, name: u.name },
+          category: 'social',
+          meta: u.history ? `Facility: ${u.history}` : 'Active Member'
+        });
+      }
+    }
+
+    // Recommendation 3: Opportunities recommendation (Job / Housing)
+    const hasHousingFocus = focusCategories.includes('housing');
+
+    if (hasHousingFocus && housing.length > 0) {
+      // Pick a housing recommendation
+      const h = housing[0];
+      list.push({
+        id: `rec-housing-${h.id}`,
+        type: 'housing',
+        title: 'Housing Resource Alternative',
+        badge: '🏠 Approved Shelter',
+        boldTitle: h.name,
+        description: `This transitional housing option located in ${h.location} could help resolve your remaining housing milestones. Contact ${h.contact_info || 'representative'}!`,
+        actionLabel: 'Open Housing Guide',
+        category: 'housing',
+        meta: `Type: ${h.type.replace('_', ' ').toUpperCase()}`
+      });
+    } else if (jobs.length > 0) {
+      let bestJob = jobs[0];
+      let maxMatch = 0;
+      for (const j of jobs) {
+        let maxJobMatch = 0;
+        const combinedText = `${j.title} ${j.description}`.toLowerCase();
+        for (const tag of userInterests) {
+          if (combinedText.includes(tag)) maxJobMatch++;
+        }
+        if (j.is_felony_friendly) maxJobMatch += 2;
+        if (maxJobMatch > maxMatch) {
+          maxMatch = maxJobMatch;
+          bestJob = j;
+        }
+      }
+
+      list.push({
+        id: `rec-job-${bestJob.id}`,
+        type: 'job',
+        title: 'Career Opportunity Path',
+        badge: '💼 Felony Friendly Job',
+        boldTitle: `${bestJob.title} at ${bestJob.company}`,
+        description: `Recommended based on your professional re-entry goals. ${bestJob.description.substring(0, 75)}...`,
+        actionLabel: 'Apply on Job Board',
+        category: 'career',
+        meta: `Location: ${bestJob.location}`
+      });
+    }
+
+    return list;
+  };
+
   return (
     <div className="space-y-12">
       <header className="space-y-4">
@@ -680,6 +931,124 @@ export default function TheYard() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Dynamic Celebration Toast for Completed Milestones */}
+      <AnimatePresence>
+        {showCelebration && (
+          <motion.div
+            initial={{ opacity: 0, y: -25, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -25, scale: 0.95 }}
+            className="bg-emerald-50 border-2 border-emerald-500 p-4 shadow-xl text-emerald-950 flex justify-between items-center gap-4 rounded-sm fixed top-24 left-1/2 -translate-x-1/2 z-[100] max-w-md w-full font-sans"
+          >
+            <div className="flex items-center gap-3">
+              <Sparkles className="text-emerald-600 animate-spin shrink-0" size={24} />
+              <div>
+                <p className="font-extrabold uppercase text-[10px] tracking-wider text-emerald-800">Milestone Unlocked!</p>
+                <p className="text-xs font-semibold">{celebrationMessage}</p>
+              </div>
+            </div>
+            <button onClick={() => setShowCelebration(false)} className="text-emerald-700 hover:text-emerald-950 text-xs font-bold leading-none px-2 py-1">✕</button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Recommended For You Section */}
+      <div className="bg-gradient-to-r from-amber-50 to-zinc-50 border-2 border-[#141414] p-8 space-y-6 shadow-sm relative overflow-hidden">
+        {/* Decorative corner visual */}
+        <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full blur-2xl pointer-events-none" />
+        
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-[#141414]/10 pb-4">
+          <div className="space-y-1">
+            <span className="text-[10px] uppercase font-mono tracking-widest text-amber-800 font-bold flex items-center gap-1.5 leading-none">
+              <Compass size={14} className="text-amber-600 animate-pulse" /> Active Re-entry Navigation // Algorithmic Tailoring
+            </span>
+            <h3 className="text-3xl font-serif italic font-bold text-[#141414]">Recommended For You</h3>
+          </div>
+          <span className="text-[9px] font-mono bg-amber-200/60 text-amber-950 border border-amber-300 font-bold uppercase tracking-wider px-2.5 py-1 rounded">
+            Live Alignment
+          </span>
+        </div>
+
+        {/* Info or helper text */}
+        <p className="text-xs text-neutral-600 leading-relaxed font-light max-w-3xl">
+          Based on your <span className="font-semibold text-[#141414]">declared interests</span> and <span className="font-semibold text-[#141414]">remaining milestones</span>, we have matching resources and peers supporting your specific developmental path.
+        </p>
+
+        {/* Three recommendations grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {getWorkspaceRecommendations().map((rec) => {
+            const isMilestone = rec.type === 'milestone';
+            const isPeer = rec.type === 'peer';
+            const isOpportunity = rec.type === 'job' || rec.type === 'housing';
+
+            return (
+              <motion.div
+                key={rec.id}
+                whileHover={{ y: -3 }}
+                className="bg-white border border-[#141414] p-6 flex flex-col justify-between space-y-4 hover:shadow-md transition-all relative group"
+              >
+                {/* Header of card */}
+                <div className="space-y-2 text-left">
+                  <div className="flex justify-between items-center bg-transparent">
+                    <span className="text-[9px] font-mono uppercase font-black text-gray-500 tracking-wider">
+                      {rec.title}
+                    </span>
+                    <span className="text-[9px] font-mono bg-neutral-100 text-[#141414] border border-neutral-300 px-1.5 py-0.5 font-bold uppercase tracking-wide rounded-sm">
+                      {rec.badge}
+                    </span>
+                  </div>
+                  
+                  <h4 className="text-lg font-serif italic font-bold text-[#141414] leading-snug">
+                    {rec.boldTitle}
+                  </h4>
+                  
+                  <p className="text-xs text-neutral-600 leading-relaxed font-light">
+                    {rec.description}
+                  </p>
+                </div>
+
+                {/* Footer of card */}
+                <div className="space-y-3 pt-3 border-t border-dashed border-neutral-200 text-left">
+                  <span className="text-[10px] font-mono text-gray-500 block truncate font-medium">
+                    {rec.meta}
+                  </span>
+
+                  {isMilestone && rec.actionData && (
+                    <button
+                      onClick={() => handleCompleteMilestone(rec.actionData, rec.boldTitle)}
+                      className="w-full bg-[#141414] hover:bg-neutral-800 text-white text-[10px] font-black font-mono uppercase tracking-widest py-2.5 transition-all cursor-pointer flex items-center justify-center gap-1.5 rounded-sm"
+                    >
+                      <CheckCircle size={12} /> {rec.actionLabel}
+                    </button>
+                  )}
+
+                  {isPeer && rec.actionData && (
+                    <button
+                      onClick={() => handleSendKite(rec.actionData.id, rec.actionData.name)}
+                      className="w-full bg-white hover:bg-neutral-50 text-[#141414] border border-[#141414] text-[10px] font-black font-mono uppercase tracking-widest py-2.5 transition-all cursor-pointer flex items-center justify-center gap-1.5 rounded-sm"
+                    >
+                      <MessageSquare size={12} /> {rec.actionLabel}
+                    </button>
+                  )}
+
+                  {isOpportunity && (
+                    <div className="text-center text-[10px] text-zinc-400 font-mono italic">
+                      Visit the <strong className="text-[#141414] font-bold">Opportunities</strong> tab to view complete specs
+                    </div>
+                  )}
+
+                  {rec.type === 'milestone-empty' && (
+                    <div className="text-center text-[10px] text-emerald-600 font-mono uppercase font-black tracking-wide bg-emerald-50 py-1.5 border border-emerald-200 rounded">
+                      🎉 Full Roadmap Cleared
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Community Milestones & Recent Activity Dashboard */}

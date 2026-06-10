@@ -7,3 +7,150 @@
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
+/* -------------------------------------------------------------
+ * Dynamic Universal Dark Mode Overrides
+ * ------------------------------------------------------------- */
+.dark {
+  color-scheme: dark;
+}
+
+/* Soft transition for themes */
+body, div, nav, button, input, textarea, select, h1, h2, h3, h4, h5, h6, p, span, section {
+  transition-property: background-color, border-color, text-decoration-color, fill, stroke;
+  transition-duration: 200ms;
+}
+
+/* Page/Canvas level defaults */
+.dark body,
+.dark .min-h-screen {
+  background-color: #121211 !important;
+  color: #e4e3e0 !important;
+}
+
+/* Background class substitutions */
+.dark .bg-\[\#E4E3E0\] {
+  background-color: #121211 !important;
+  color: #e4e3e0 !important;
+}
+
+.dark .bg-white {
+  background-color: #1c1c1a !important;
+  color: #e4e3e0 !important;
+}
+
+.dark .bg-neutral-50,
+.dark .bg-neutral-100,
+.dark .bg-zinc-50,
+.dark .bg-gray-50,
+.dark .bg-gray-100 {
+  background-color: #181816 !important;
+}
+
+/* Borders & divides adjustments */
+.dark .border-\[\#141414\] {
+  border-color: #3e3e3a !important;
+}
+
+.dark .border-\[\#141414\]\/10 {
+  border-color: rgba(228, 227, 224, 0.15) !important;
+}
+
+.dark .border-neutral-200,
+.dark .border-neutral-100,
+.dark .border-zinc-200,
+.dark .border-gray-200 {
+  border-color: #2e2e2a !important;
+}
+
+.dark .divide-[#141414]\/10 > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgba(228, 227, 224, 0.15) !important;
+}
+
+/* Text selections & colors in Dark Mode */
+.dark .text-\[\#141414\] {
+  color: #e4e3e0 !important;
+}
+
+.dark .text-[#141414] {
+  color: #e4e3e0 !important;
+}
+
+.dark .text-neutral-900,
+.dark .text-zinc-900,
+.dark .text-gray-900 {
+  color: #ffffff !important;
+}
+
+.dark .text-neutral-800,
+.dark .text-neutral-700,
+.dark .text-zinc-700,
+.dark .text-gray-800,
+.dark .text-gray-750 {
+  color: #e4e3e0 !important;
+}
+
+.dark .text-neutral-600,
+.dark .text-neutral-500,
+.dark .text-zinc-500,
+.dark .text-gray-600 {
+  color: #a1a1aa !important;
+}
+
+/* Interactive elements inversion under dark class */
+.dark .bg-\[\#141414\] {
+  background-color: #e4e3e0 !important;
+  color: #121211 !important;
+}
+
+/* Make sure button nodes preserve contrasts */
+.dark button.bg-\[\#141414\],
+.dark form button[type="submit"],
+.dark a.bg-\[\#141414\] {
+  background-color: #e4e3e0 !important;
+  color: #121211 !important;
+}
+
+.dark .text-\[\#E4E3E0\] {
+  color: #121211 !important;
+}
+
+.dark .hover\:bg-\[\#141414\]\/5:hover {
+  background-color: rgba(228, 227, 224, 0.08) !important;
+}
+
+/* Interactive inputs overrides */
+.dark input,
+.dark textarea,
+.dark select {
+  background-color: #1c1c1a !important;
+  color: #ffffff !important;
+  border-color: #3e3e3a !important;
+}
+
+.dark select option {
+  background-color: #1c1c1a !important;
+  color: #ffffff !important;
+}
+
+/* Navigation items bar adjustments */
+.dark nav {
+  background-color: #121211 !important;
+  border-bottom: 1px solid #3e3e3a !important;
+}
+
+.dark nav .bg-\[\#141414\] {
+  background-color: #3e3e3a !important;
+  color: #e4e3e0 !important;
+}
+
+.dark .sticky {
+  background-color: #121211 !important;
+}
+
+/* Specific helper structures for popup items */
+.dark .shadow-xl, 
+.dark .shadow-sm {
+  background-color: #1c1c1a !important;
+  border-color: #3e3e3a !important;
+}
+

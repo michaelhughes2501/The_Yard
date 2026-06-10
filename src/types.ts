@@ -124,6 +124,7 @@ export interface Mentorship {
   status: 'pending' | 'active' | 'completed' | 'declined';
   created_at: string;
   updated_at: string;
+  is_anonymous?: number | boolean;
 }
 
 export interface AppDocument {

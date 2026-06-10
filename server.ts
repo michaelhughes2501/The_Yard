@@ -97,6 +97,14 @@ try {
   `);
 } catch (e) {}
 
+try {
+  db.exec("ALTER TABLE mentorships ADD COLUMN is_anonymous INTEGER DEFAULT 0");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE kites ADD COLUMN is_anonymous INTEGER DEFAULT 0");
+} catch (e) {}
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
@@ -123,6 +131,7 @@ db.exec(`
     mentor_id TEXT,
     mentee_id TEXT,
     status TEXT DEFAULT 'pending', -- pending, active, completed, declined
+    is_anonymous INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(mentor_id) REFERENCES users(id),
@@ -173,6 +182,7 @@ db.exec(`
     content TEXT,
     is_read INTEGER DEFAULT 0,
     read_at DATETIME,
+    is_anonymous INTEGER DEFAULT 0,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(sender_id) REFERENCES users(id),
     FOREIGN KEY(receiver_id) REFERENCES users(id)
@@ -843,18 +853,19 @@ async function startServer() {
     const mentorships = db.prepare(`
       SELECT m.*, 
              u1.username as mentor_name, 
-             u2.username as mentee_name
+             CASE WHEN m.is_anonymous = 1 AND m.mentor_id = ? THEN 'Anonymous Mentee' ELSE u2.username END as mentee_name
       FROM mentorships m
       JOIN users u1 ON m.mentor_id = u1.id
       JOIN users u2 ON m.mentee_id = u2.id
       WHERE m.mentor_id = ? OR m.mentee_id = ?
       ORDER BY m.updated_at DESC
-    `).all(req.userId, req.userId);
+    `).all(req.userId, req.userId, req.userId);
     res.json(mentorships);
   });
 
   app.post("/api/mentorships/request", requireAuth, (req: any, res) => {
-    const { mentorId, message } = req.body;
+    const { mentorId, message, isAnonymous } = req.body;
+    const isAnonVal = isAnonymous ? 1 : 0;
     
     // Check if already requested
     const existing = db.prepare("SELECT id FROM mentorships WHERE mentor_id = ? AND mentee_id = ? AND status IN ('pending', 'active')").get(mentorId, req.userId);
@@ -863,21 +874,29 @@ async function startServer() {
     }
 
     const id = crypto.randomUUID();
-    db.prepare("INSERT INTO mentorships (id, mentor_id, mentee_id, status) VALUES (?, ?, ?, 'pending')").run(id, mentorId, req.userId);
+    db.prepare("INSERT INTO mentorships (id, mentor_id, mentee_id, status, is_anonymous) VALUES (?, ?, ?, 'pending', ?)")
+      .run(id, mentorId, req.userId, isAnonVal);
     
     const mentee = db.prepare("SELECT username FROM users WHERE id = ?").get(req.userId) as any;
     const notifId = crypto.randomUUID();
+    const notifContent = isAnonymous 
+      ? "An anonymous user has requested you as a mentor for advice." 
+      : `${mentee.username} has requested you as a mentor.`;
     db.prepare("INSERT INTO notifications (id, user_id, type, content, link) VALUES (?, ?, ?, ?, ?)").run(
-      notifId, mentorId, 'mentorship_request', `${mentee.username} has requested you as a mentor.`, 'mentorship'
+      notifId, mentorId, 'mentorship_request', notifContent, 'mentorship'
     );
 
     if (message && message.trim()) {
       const kiteId = crypto.randomUUID();
-      db.prepare("INSERT INTO kites (id, sender_id, receiver_id, content) VALUES (?, ?, ?, ?)").run(kiteId, req.userId, mentorId, message.trim());
+      db.prepare("INSERT INTO kites (id, sender_id, receiver_id, content, is_anonymous) VALUES (?, ?, ?, ?, ?)")
+        .run(kiteId, req.userId, mentorId, message.trim(), isAnonVal);
       
       const kiteNotifId = crypto.randomUUID();
+      const kiteNotifContent = isAnonymous 
+        ? "New anonymous guidance/advice kite received." 
+        : `New kite from ${mentee.username}`;
       db.prepare("INSERT INTO notifications (id, user_id, type, content, link) VALUES (?, ?, ?, ?, ?)").run(
-        kiteNotifId, mentorId, 'kite', `New kite from ${mentee.username}`, 'kites'
+        kiteNotifId, mentorId, 'kite', kiteNotifContent, 'kites'
       );
     }
 
@@ -907,8 +926,10 @@ async function startServer() {
     else if (status === 'declined') actionText = 'declined your mentorship request';
     else if (status === 'completed') actionText = 'marked your mentorship as completed';
 
+    const actorName = (mentorship.is_anonymous === 1 && req.userId === mentorship.mentee_id) ? "Your anonymous mentee" : actor.username;
+
     db.prepare("INSERT INTO notifications (id, user_id, type, content, link) VALUES (?, ?, ?, ?, ?)").run(
-      notifId, otherUserId, 'mentorship_update', `${actor.username} ${actionText}.`, 'mentorship'
+      notifId, otherUserId, 'mentorship_update', `${actorName} ${actionText}.`, 'mentorship'
     );
 
     res.json({ success: true });
@@ -1055,7 +1076,18 @@ async function startServer() {
       ) k ON u.id = CASE WHEN k.sender_id = ? THEN k.receiver_id ELSE k.sender_id END
       ORDER BY k.timestamp DESC
     `).all(req.userId, req.userId, req.userId, req.userId, req.userId, req.userId);
-    res.json(conversations);
+    
+    const updatedConversations = conversations.map((conv: any) => {
+      const isAnonMentee = db.prepare("SELECT 1 FROM mentorships WHERE mentor_id = ? AND mentee_id = ? AND is_anonymous = 1").get(req.userId, conv.other_user_id);
+      if (isAnonMentee) {
+        return {
+          ...conv,
+          other_user_name: "Anonymous Mentee"
+        };
+      }
+      return conv;
+    });
+    res.json(updatedConversations);
   });
 
   app.get("/api/kites/thread/:otherUserId", requireAuth, (req: any, res) => {
@@ -1067,7 +1099,18 @@ async function startServer() {
          OR (k.sender_id = ? AND k.receiver_id = ?)
       ORDER BY k.timestamp ASC
     `).all(req.userId, req.params.otherUserId, req.params.otherUserId, req.userId);
-    res.json(messages);
+    
+    const isAnonMentee = db.prepare("SELECT 1 FROM mentorships WHERE mentor_id = ? AND mentee_id = ? AND is_anonymous = 1").get(req.userId, req.params.otherUserId);
+    const updatedMessages = messages.map((msg: any) => {
+      if (isAnonMentee && msg.sender_id === req.params.otherUserId) {
+        return {
+          ...msg,
+          sender_name: "Anonymous Mentee"
+        };
+      }
+      return msg;
+    });
+    res.json(updatedMessages);
   });
 
   app.post("/api/kites/read/:otherUserId", requireAuth, (req: any, res) => {
@@ -1087,18 +1130,34 @@ async function startServer() {
       WHERE k.receiver_id = ?
       ORDER BY k.timestamp DESC
     `).all(req.userId);
-    res.json(kites);
+    
+    const updatedKites = kites.map((kite: any) => {
+      const isAnonMentee = db.prepare("SELECT 1 FROM mentorships WHERE mentor_id = ? AND mentee_id = ? AND is_anonymous = 1").get(req.userId, kite.sender_id);
+      if (isAnonMentee) {
+        return {
+          ...kite,
+          from: "Anonymous Mentee"
+        };
+      }
+      return kite;
+    });
+    res.json(updatedKites);
   });
 
   app.post("/api/kites", requireAuth, (req: any, res) => {
     const { receiverId, content } = req.body;
+    const isAnonMentorship = db.prepare("SELECT 1 FROM mentorships WHERE mentor_id = ? AND mentee_id = ? AND is_anonymous = 1").get(receiverId, req.userId);
+    const isAnonymous = !!isAnonMentorship;
+
     const id = crypto.randomUUID();
-    db.prepare("INSERT INTO kites (id, sender_id, receiver_id, content) VALUES (?, ?, ?, ?)").run(id, req.userId, receiverId, content);
+    db.prepare("INSERT INTO kites (id, sender_id, receiver_id, content, is_anonymous) VALUES (?, ?, ?, ?, ?)")
+      .run(id, req.userId, receiverId, content, isAnonymous ? 1 : 0);
     
     const sender = db.prepare("SELECT username FROM users WHERE id = ?").get(req.userId) as any;
     const notifId = crypto.randomUUID();
+    const notifContent = isAnonymous ? "New anonymous guidance/advice kite received." : `New kite from ${sender.username}`;
     db.prepare("INSERT INTO notifications (id, user_id, type, content, link) VALUES (?, ?, ?, ?, ?)").run(
-      notifId, receiverId, 'kite', `New kite from ${sender.username}`, 'kites'
+      notifId, receiverId, 'kite', notifContent, 'kites'
     );
 
     res.json({ success: true });
