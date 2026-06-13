@@ -1,6 +1,12 @@
 import React, { useState } from 'react';
 import { ShieldCheck, ArrowLeft } from 'lucide-react';
+import { clsx } from 'clsx';
+import { twMerge } from 'tailwind-merge';
 import { useAuth } from '../AuthContext';
+
+function cn(...inputs: Parameters<typeof clsx>) {
+  return twMerge(clsx(inputs));
+}
 
 type AuthView = 'login' | 'register' | 'forgot' | 'reset';
 
@@ -88,21 +94,27 @@ export default function Auth() {
         </div>
 
         {/* Form card */}
-        <div className="bg-white border border-t-0 border-[#141414] px-8 pb-8 pt-6 shadow-2xl">
+        <div className="auth-card bg-white border border-t-0 border-[#141414] px-8 pb-8 pt-6 shadow-2xl">
           {/* Tab switcher for login/register */}
           {(view === 'login' || view === 'register') && (
             <div className="flex mb-6 border-b border-[#141414]/10">
               <button
                 type="button"
                 onClick={() => { setView('login'); setError(''); setSuccessMsg(''); }}
-                className={`flex-1 pb-3 text-xs uppercase tracking-widest font-bold transition-all ${view === 'login' ? 'border-b-2 border-[#141414] opacity-100' : 'opacity-30 hover:opacity-60'}`}
+                className={cn(
+                  "flex-1 pb-3 text-xs uppercase tracking-widest font-bold transition-all",
+                  view === 'login' ? "border-b-2 border-[#141414] opacity-100" : "opacity-30 hover:opacity-60"
+                )}
               >
                 Sign In
               </button>
               <button
                 type="button"
                 onClick={() => { setView('register'); setError(''); setSuccessMsg(''); }}
-                className={`flex-1 pb-3 text-xs uppercase tracking-widest font-bold transition-all ${view === 'register' ? 'border-b-2 border-[#141414] opacity-100' : 'opacity-30 hover:opacity-60'}`}
+                className={cn(
+                  "flex-1 pb-3 text-xs uppercase tracking-widest font-bold transition-all",
+                  view === 'register' ? "border-b-2 border-[#141414] opacity-100" : "opacity-30 hover:opacity-60"
+                )}
               >
                 Create Account
               </button>

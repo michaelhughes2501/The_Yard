@@ -1516,11 +1516,13 @@ async function startServer() {
     res.json({ success: true });
   });
 
+  const deleteThread = db.transaction((id: string) => {
+    db.prepare("DELETE FROM replies WHERE thread_id = ?").run(id);
+    db.prepare("DELETE FROM threads WHERE id = ?").run(id);
+  });
+
   app.delete("/api/admin/posts/:id", requireAuth, requireRole(['moderator', 'admin', 'super_admin']), (req: any, res) => {
-    db.transaction(() => {
-      db.prepare("DELETE FROM replies WHERE thread_id = ?").run(req.params.id);
-      db.prepare("DELETE FROM threads WHERE id = ?").run(req.params.id);
-    })();
+    deleteThread(req.params.id);
     res.json({ success: true });
   });
 

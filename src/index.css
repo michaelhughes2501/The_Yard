@@ -154,15 +154,15 @@ body, div, nav, button, input, textarea, select, h1, h2, h3, h4, h5, h6, p, span
   border-color: #3e3e3a !important;
 }
 
-/* Scroll-to-top button */
-.dark .fixed.bg-\[\#141414\] {
-  background-color: #e4e3e0 !important;
-  color: #121211 !important;
+/* Scroll-to-top button in dark mode */
+.dark button.fixed.rounded-full {
+  background-color: #e4e3e0;
+  color: #121211;
 }
 
-/* Auth card dark override */
-.dark .bg-white.border.border-t-0 {
-  background-color: #1c1c1a !important;
+/* Auth form card in dark mode */
+.dark .auth-card {
+  background-color: #1c1c1a;
 }
 
 /* Smooth focus rings */
