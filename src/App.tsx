@@ -262,6 +262,8 @@ function MainApp() {
           <div className="relative" ref={moreMenuRef}>
             <button
               onClick={() => setShowMoreMenu(p => !p)}
+              aria-haspopup="true"
+              aria-expanded={showMoreMenu}
               className={cn(
                 "flex items-center gap-1 text-xs font-medium uppercase tracking-widest transition-all hover:opacity-100 pb-0.5",
                 secondaryTabs.some(t => t.id === activeTab)
@@ -531,17 +533,17 @@ function MainApp() {
             <h4 className="text-xs uppercase tracking-widest opacity-40 mb-4">Quick Links</h4>
             <ul className="flex flex-col gap-2 text-sm">
               <li>
-                <button onClick={() => { window.dispatchEvent(new CustomEvent('changeTab', { detail: 'mental-health' })); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="hover:underline text-left">
+                <button onClick={() => navigateTo('mental-health')} className="hover:underline text-left">
                   Mental Health Support
                 </button>
               </li>
               <li>
-                <button onClick={() => { window.dispatchEvent(new CustomEvent('changeTab', { detail: 'resources' })); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="hover:underline text-left">
+                <button onClick={() => navigateTo('resources')} className="hover:underline text-left">
                   Parole Resources
                 </button>
               </li>
               <li>
-                <button onClick={() => { window.dispatchEvent(new CustomEvent('changeTab', { detail: 'tools' })); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="hover:underline text-left">
+                <button onClick={() => navigateTo('tools')} className="hover:underline text-left">
                   Legal Aid
                 </button>
               </li>

@@ -1517,8 +1517,10 @@ async function startServer() {
   });
 
   app.delete("/api/admin/posts/:id", requireAuth, requireRole(['moderator', 'admin', 'super_admin']), (req: any, res) => {
-    db.prepare("DELETE FROM replies WHERE thread_id = ?").run(req.params.id);
-    db.prepare("DELETE FROM threads WHERE id = ?").run(req.params.id);
+    db.transaction(() => {
+      db.prepare("DELETE FROM replies WHERE thread_id = ?").run(req.params.id);
+      db.prepare("DELETE FROM threads WHERE id = ?").run(req.params.id);
+    })();
     res.json({ success: true });
   });
 
