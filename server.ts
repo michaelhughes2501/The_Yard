@@ -1323,7 +1323,7 @@ async function startServer() {
     const users = db.prepare("SELECT id, username as name, bio, location FROM users WHERE username LIKE ? OR bio LIKE ? OR location LIKE ? LIMIT 10").all(likeQ, likeQ, likeQ);
     const jobs = db.prepare("SELECT id, title, company, location FROM jobs WHERE title LIKE ? OR company LIKE ? OR description LIKE ? LIMIT 10").all(likeQ, likeQ, likeQ);
     const housing = db.prepare("SELECT id, name, type, location FROM housing WHERE name LIKE ? OR description LIKE ? OR location LIKE ? LIMIT 10").all(likeQ, likeQ, likeQ);
-    const posts = db.prepare("SELECT id, title, content, category FROM posts WHERE title LIKE ? OR content LIKE ? LIMIT 10").all(likeQ, likeQ);
+    const posts = db.prepare("SELECT id, title, content, category FROM threads WHERE title LIKE ? OR content LIKE ? LIMIT 10").all(likeQ, likeQ);
     
     res.json({ users, jobs, housing, posts });
   });
@@ -1348,13 +1348,13 @@ async function startServer() {
     const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get() as any;
     const jobCount = db.prepare("SELECT COUNT(*) as count FROM jobs").get() as any;
     const housingCount = db.prepare("SELECT COUNT(*) as count FROM housing").get() as any;
-    const postCount = db.prepare("SELECT COUNT(*) as count FROM posts").get() as any;
-    
+    const threadCount = db.prepare("SELECT COUNT(*) as count FROM threads").get() as any;
+
     res.json({
       users: userCount.count,
       jobs: jobCount.count,
       housing: housingCount.count,
-      posts: postCount.count
+      posts: threadCount.count
     });
   });
 
@@ -1517,7 +1517,8 @@ async function startServer() {
   });
 
   app.delete("/api/admin/posts/:id", requireAuth, requireRole(['moderator', 'admin', 'super_admin']), (req: any, res) => {
-    db.prepare("DELETE FROM posts WHERE id = ?").run(req.params.id);
+    db.prepare("DELETE FROM replies WHERE thread_id = ?").run(req.params.id);
+    db.prepare("DELETE FROM threads WHERE id = ?").run(req.params.id);
     res.json({ success: true });
   });
 
