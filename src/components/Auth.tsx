@@ -1,12 +1,6 @@
 import React, { useState } from 'react';
 import { ShieldCheck, ArrowLeft } from 'lucide-react';
-import { clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
 import { useAuth } from '../AuthContext';
-
-function cn(...inputs: Parameters<typeof clsx>) {
-  return twMerge(clsx(inputs));
-}
 
 type AuthView = 'login' | 'register' | 'forgot' | 'reset';
 
@@ -83,60 +77,23 @@ export default function Auth() {
 
   return (
     <div className="min-h-screen bg-[#E4E3E0] text-[#141414] font-sans flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Hero brand strip */}
-        <div className="bg-[#141414] text-[#E4E3E0] px-8 pt-10 pb-8 flex flex-col items-center">
-          <div className="border border-[#E4E3E0]/30 p-4 mb-5">
-            <ShieldCheck size={44} />
+      <div className="w-full max-w-md bg-white border border-[#141414] p-8 shadow-2xl">
+        <div className="flex flex-col items-center mb-8">
+          <div className="bg-[#141414] text-[#E4E3E0] p-4 rounded-sm mb-4">
+            <ShieldCheck size={48} />
           </div>
           <h1 className="text-4xl font-serif italic uppercase tracking-tighter">The Yard</h1>
-          <p className="text-[10px] opacity-50 mt-2 uppercase tracking-[0.25em]">Second Chance Network</p>
+          <p className="text-sm opacity-60 mt-2 uppercase tracking-widest">Built for Redemption</p>
         </div>
 
-        {/* Form card */}
-        <div className="auth-card bg-white border border-t-0 border-[#141414] px-8 pb-8 pt-6 shadow-2xl">
-          {/* Tab switcher for login/register */}
-          {(view === 'login' || view === 'register') && (
-            <div className="flex mb-6 border-b border-[#141414]/10">
-              <button
-                type="button"
-                onClick={() => { setView('login'); setError(''); setSuccessMsg(''); }}
-                className={cn(
-                  "flex-1 pb-3 text-xs uppercase tracking-widest font-bold transition-all",
-                  view === 'login' ? "border-b-2 border-[#141414] opacity-100" : "opacity-30 hover:opacity-60"
-                )}
-              >
-                Sign In
-              </button>
-              <button
-                type="button"
-                onClick={() => { setView('register'); setError(''); setSuccessMsg(''); }}
-                className={cn(
-                  "flex-1 pb-3 text-xs uppercase tracking-widest font-bold transition-all",
-                  view === 'register' ? "border-b-2 border-[#141414] opacity-100" : "opacity-30 hover:opacity-60"
-                )}
-              >
-                Create Account
-              </button>
-            </div>
-          )}
-
-          {/* Heading for non-login/register views */}
-          {view === 'forgot' && (
-            <h2 className="text-lg font-serif italic mb-5">Reset Your Password</h2>
-          )}
-          {view === 'reset' && (
-            <h2 className="text-lg font-serif italic mb-5">Enter New Password</h2>
-          )}
-
         {error && (
-          <div className="bg-red-50 border border-red-300 text-red-700 px-4 py-3 mb-4 text-sm">
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4 text-sm">
             {error}
           </div>
         )}
 
         {successMsg && (
-          <div className="bg-green-50 border border-green-300 text-green-700 px-4 py-3 mb-4 text-sm break-all">
+          <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4 text-sm break-all">
             {successMsg}
           </div>
         )}
@@ -230,9 +187,9 @@ export default function Auth() {
             </>
           )}
 
-          <button
+          <button 
             type="submit"
-            className="w-full bg-[#141414] text-[#E4E3E0] p-4 uppercase tracking-widest font-bold hover:opacity-80 active:scale-[0.98] transition-all mt-6"
+            className="w-full bg-[#141414] text-[#E4E3E0] p-4 uppercase tracking-widest font-bold hover:opacity-90 transition-opacity mt-6"
           >
             {view === 'login' && 'Enter The Yard'}
             {view === 'register' && 'Create Account'}
@@ -243,28 +200,40 @@ export default function Auth() {
 
         <div className="mt-6 flex flex-col items-center gap-3">
           {view === 'login' && (
-            <button
-              onClick={() => { setView('forgot'); setError(''); setSuccessMsg(''); }}
-              className="text-[10px] uppercase tracking-widest opacity-40 hover:opacity-80 hover:underline"
+            <>
+              <button 
+                onClick={() => { setView('forgot'); setError(''); setSuccessMsg(''); }}
+                className="text-xs uppercase tracking-widest opacity-60 hover:opacity-100 hover:underline"
+              >
+                Forgot Password?
+              </button>
+              <button 
+                onClick={() => { setView('register'); setError(''); setSuccessMsg(''); }}
+                className="text-xs uppercase tracking-widest opacity-60 hover:opacity-100 hover:underline"
+              >
+                Need an account? Sign up
+              </button>
+            </>
+          )}
+          
+          {view === 'register' && (
+            <button 
+              onClick={() => { setView('login'); setError(''); setSuccessMsg(''); }}
+              className="text-xs uppercase tracking-widest opacity-60 hover:opacity-100 hover:underline"
             >
-              Forgot Password?
+              Already have an account? Log in
             </button>
           )}
 
           {(view === 'forgot' || view === 'reset') && (
-            <button
+            <button 
               onClick={() => { setView('login'); setError(''); setSuccessMsg(''); }}
               className="text-xs uppercase tracking-widest opacity-60 hover:opacity-100 hover:underline flex items-center gap-1"
             >
-              <ArrowLeft size={12} /> Back to Sign In
+              <ArrowLeft size={12} /> Back to Login
             </button>
           )}
         </div>
-        </div>
-
-        <p className="text-center text-[10px] uppercase tracking-widest opacity-30 mt-6">
-          Built for Redemption — © {new Date().getFullYear()} The Yard
-        </p>
       </div>
     </div>
   );

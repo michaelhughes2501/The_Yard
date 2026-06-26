@@ -821,17 +821,17 @@ export default function TheYard() {
       <div className="bg-white border-2 border-[#141414] p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#141414]/15 pb-4">
           <div className="space-y-1">
-            <span className="text-[10px] uppercase font-mono tracking-widest text-gray-500 font-bold flex items-center gap-1.5">
+            <span className="text-[10px] uppercase font-mono tracking-widest text-[#141414]/60 font-black flex items-center gap-1.5">
               <Activity size={12} className="text-[#141414]" /> Broadcast Your Mind // The Yard Status
             </span>
-            <h3 className="text-2xl font-serif italic font-bold">Your Yard Presence</h3>
+            <h3 className="text-2xl font-serif italic font-bold">Your Yard Status</h3>
           </div>
           {!isEditingPresence && (
             <button
               onClick={() => setIsEditingPresence(true)}
               className="px-4 py-2 border border-[#141414] hover:bg-[#141414] hover:text-[#E4E3E0] text-xs font-mono uppercase tracking-widest font-bold transition-all cursor-pointer"
             >
-              Update Presence
+              Set My Yard Status
             </button>
           )}
         </div>
@@ -871,7 +871,7 @@ export default function TheYard() {
                 className="w-4 h-4 border border-[#141414]"
               />
               <label htmlFor="presence-meet-check" className="text-xs font-bold font-mono uppercase tracking-wide cursor-pointer select-none">
-                🟢 I am actively looking to meet and coordinate with others in the Yard
+                🟢 Signal availability: Put me high on the directory as <strong className="text-amber-950">"ACTIVE ON THE YARD"</strong> (Ready to connect and meet peers)
               </label>
             </div>
 
@@ -887,7 +887,7 @@ export default function TheYard() {
                 type="submit"
                 className="px-6 py-2 bg-[#141414] text-[#E4E3E0] text-xs font-mono uppercase tracking-widest font-bold hover:opacity-90 transition-all cursor-pointer"
               >
-                Save Updates
+                Save My Yard Status
               </button>
             </div>
           </form>
@@ -920,11 +920,11 @@ export default function TheYard() {
               <div className="pt-0.5">
                 {currentUserProfile?.looking_to_meet ? (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-300 font-mono text-[10px] font-black uppercase tracking-widest">
-                    <span>🟢</span> Looking to Meet
+                    <span>🟢</span> Active on the Yard
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-gray-50 text-gray-400 border border-gray-200 font-mono text-[10px] font-black uppercase tracking-widest">
-                    <span>⚪</span> Just Browsing
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-800 border border-amber-200 font-mono text-[10px] font-black uppercase tracking-widest">
+                    <span>⚪</span> Off the Yard (Recess)
                   </span>
                 )}
               </div>
@@ -1438,17 +1438,30 @@ export default function TheYard() {
               className="group bg-white border border-[#141414] p-8 hover:bg-[#141414] hover:text-[#E4E3E0] transition-all flex flex-col justify-between"
             >
               <div>
-                <div className="flex justify-between items-start mb-6">
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-3xl font-serif italic font-bold">{user.name}</h3>
+                <div className="flex justify-between items-start mb-4">
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-3xl font-serif italic font-bold leading-none">{user.name}</h3>
                       {user.looking_to_meet && (
                         <span className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-100 group-hover:bg-emerald-500/20 text-emerald-800 group-hover:text-emerald-300 border border-emerald-300 font-mono text-[9px] font-black uppercase tracking-wider rounded">
-                          🟢 Meet Ready
+                          🟢 Active on Yard
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 text-xs uppercase tracking-widest opacity-60">
+                    
+                    {/* Dating Demographic Badge strip */}
+                    {(user.age || user.gender || user.relationship_status) && (
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[10px] font-mono font-bold uppercase tracking-wider text-amber-900 group-hover:text-amber-300">
+                        {user.age && <span>{user.age} Yrs</span>}
+                        {user.age && (user.gender || user.pronouns) && <span>•</span>}
+                        {user.gender && <span>{user.gender}</span>}
+                        {user.pronouns && <span className="opacity-60">({user.pronouns})</span>}
+                        {(user.age || user.gender) && user.relationship_status && <span>•</span>}
+                        {user.relationship_status && <span className="underline decoration-wavy">{user.relationship_status}</span>}
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-1.5 text-xs uppercase tracking-widest opacity-60 pt-0.5">
                       <MapPin size={12} />
                       {user.location || 'Unknown Location'}
                     </div>
@@ -1468,11 +1481,19 @@ export default function TheYard() {
                 </div>
 
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-sm font-mono">
+                  {user.looking_for && (
+                    <div className="text-xs italic font-serif leading-relaxed text-gray-700 group-hover:text-gray-300 border-l-2 border-amber-600/50 pl-2 mt-2">
+                      <span className="font-mono text-[9px] uppercase font-bold not-italic text-neutral-400 group-hover:text-amber-400 mr-1 block">Looking For:</span>
+                      {user.looking_for}
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2 text-sm font-mono pt-1">
                     <History size={16} className="opacity-40" />
-                    <span className="opacity-60">Facility:</span>
+                    <span className="opacity-60">Facility Track:</span>
                     <span>{user.history || 'Not specified'}</span>
                   </div>
+
                   <p className="text-sm leading-relaxed opacity-80">
                     "{user.bio || 'No bio provided.'}"
                   </p>
@@ -1480,6 +1501,13 @@ export default function TheYard() {
                   {user.public_status && (
                     <div className="bg-[#141414]/5 group-hover:bg-white/5 border-l-2 border-[#141414] group-hover:border-white p-3 font-serif italic text-sm text-gray-700 group-hover:text-white/90">
                       "{user.public_status}"
+                    </div>
+                  )}
+
+                  {user.incarceration_details && (
+                    <div className="bg-[#141414]/5 group-hover:bg-white/5 border border-dashed border-[#141414]/20 group-hover:border-white/20 p-2.5 text-xs text-neutral-700 group-hover:text-neutral-300 font-sans mt-2 rounded">
+                      <strong className="text-[10px] font-mono uppercase tracking-wider text-amber-900 group-hover:text-amber-400 font-black block mb-0.5">Story Background:</strong>
+                      {user.incarceration_details}
                     </div>
                   )}
 

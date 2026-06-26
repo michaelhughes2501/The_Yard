@@ -83,6 +83,30 @@ try {
 } catch (e) {}
 
 try {
+  db.exec("ALTER TABLE users ADD COLUMN age INTEGER");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN gender TEXT");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN pronouns TEXT");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN looking_for TEXT");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN relationship_status TEXT");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN incarceration_details TEXT");
+} catch (e) {}
+
+try {
   db.exec(`
     CREATE TABLE IF NOT EXISTS wellness_journals (
       id TEXT PRIMARY KEY,
@@ -118,7 +142,13 @@ db.exec(`
     public_status TEXT,
     interests TEXT,
     looking_to_meet INTEGER DEFAULT 0,
-    wellness_reminders INTEGER DEFAULT 0
+    wellness_reminders INTEGER DEFAULT 0,
+    age INTEGER,
+    gender TEXT,
+    pronouns TEXT,
+    looking_for TEXT,
+    relationship_status TEXT,
+    incarceration_details TEXT
   );
   CREATE TABLE IF NOT EXISTS password_resets (
     token TEXT PRIMARY KEY,
@@ -429,7 +459,7 @@ async function startServer() {
 
   // Data Routes
   app.get("/api/users", requireAuth, (req: any, res) => {
-    const users = db.prepare("SELECT id, username as name, facility as history, location, bio, is_mentor, hide_location, hide_history, is_admin, role, avatar_url, public_status, interests, looking_to_meet FROM users WHERE id != ?").all(req.userId);
+    const users = db.prepare("SELECT id, username as name, facility as history, location, bio, is_mentor, hide_location, hide_history, is_admin, role, avatar_url, public_status, interests, looking_to_meet, age, gender, pronouns, looking_for, relationship_status, incarceration_details FROM users WHERE id != ?").all(req.userId);
     // Filter out hidden fields
     const sanitizedUsers = users.map((u: any) => ({
       id: u.id,
@@ -443,13 +473,19 @@ async function startServer() {
       avatar_url: u.avatar_url,
       public_status: u.public_status || "",
       interests: u.interests || "",
-      looking_to_meet: u.looking_to_meet === 1
+      looking_to_meet: u.looking_to_meet === 1,
+      age: u.age,
+      gender: u.gender || "",
+      pronouns: u.pronouns || "",
+      looking_for: u.looking_for || "",
+      relationship_status: u.relationship_status || "",
+      incarceration_details: u.incarceration_details || ""
     }));
     res.json(sanitizedUsers);
   });
 
   app.get("/api/users/profile", requireAuth, (req: any, res) => {
-    const user = db.prepare("SELECT id, username as name, facility as history, location, bio, is_mentor, hide_location, hide_history, is_admin, role, avatar_url, public_status, interests, looking_to_meet, wellness_reminders FROM users WHERE id = ?").get(req.userId);
+    const user = db.prepare("SELECT id, username as name, facility as history, location, bio, is_mentor, hide_location, hide_history, is_admin, role, avatar_url, public_status, interests, looking_to_meet, wellness_reminders, age, gender, pronouns, looking_for, relationship_status, incarceration_details FROM users WHERE id = ?").get(req.userId);
     if (user) {
       (user as any).role = (user as any).role === 'user' && (user as any).is_admin === 1 ? 'super_admin' : (user as any).role;
       (user as any).looking_to_meet = (user as any).looking_to_meet === 1;
@@ -459,19 +495,25 @@ async function startServer() {
   });
 
   app.put("/api/users/profile", requireAuth, (req: any, res) => {
-    const { history, location, bio, hide_location, hide_history, avatar_url, public_status, interests, looking_to_meet, wellness_reminders } = req.body;
+    const { history, location, bio, hide_location, hide_history, avatar_url, public_status, interests, looking_to_meet, wellness_reminders, age, gender, pronouns, looking_for, relationship_status, incarceration_details } = req.body;
     
     // Read previous row to preserve unchanged optional fields
-    const existing = db.prepare("SELECT avatar_url, public_status, interests, looking_to_meet, wellness_reminders FROM users WHERE id = ?").get(req.userId) as any;
+    const existing = db.prepare("SELECT avatar_url, public_status, interests, looking_to_meet, wellness_reminders, age, gender, pronouns, looking_for, relationship_status, incarceration_details FROM users WHERE id = ?").get(req.userId) as any;
     
     const final_avatar = avatar_url !== undefined ? avatar_url : (existing ? existing.avatar_url : null);
     const final_status = public_status !== undefined ? public_status : (existing ? existing.public_status : null);
     const final_interests = interests !== undefined ? interests : (existing ? existing.interests : null);
     const final_looking = looking_to_meet !== undefined ? (looking_to_meet ? 1 : 0) : (existing ? existing.looking_to_meet : 0);
     const final_wellness_reminders = wellness_reminders !== undefined ? (wellness_reminders ? 1 : 0) : (existing ? existing.wellness_reminders : 0);
+    const final_age = age !== undefined ? age : (existing ? existing.age : null);
+    const final_gender = gender !== undefined ? gender : (existing ? existing.gender : null);
+    const final_pronouns = pronouns !== undefined ? pronouns : (existing ? existing.pronouns : null);
+    const final_looking_for = looking_for !== undefined ? looking_for : (existing ? existing.looking_for : null);
+    const final_relationship_status = relationship_status !== undefined ? relationship_status : (existing ? existing.relationship_status : null);
+    const final_incarceration_details = incarceration_details !== undefined ? incarceration_details : (existing ? existing.incarceration_details : null);
 
-    db.prepare("UPDATE users SET facility = ?, location = ?, bio = ?, hide_location = ?, hide_history = ?, avatar_url = ?, public_status = ?, interests = ?, looking_to_meet = ?, wellness_reminders = ? WHERE id = ?").run(
-      history, location, bio, hide_location ? 1 : 0, hide_history ? 1 : 0, final_avatar, final_status, final_interests, final_looking, final_wellness_reminders, req.userId
+    db.prepare("UPDATE users SET facility = ?, location = ?, bio = ?, hide_location = ?, hide_history = ?, avatar_url = ?, public_status = ?, interests = ?, looking_to_meet = ?, wellness_reminders = ?, age = ?, gender = ?, pronouns = ?, looking_for = ?, relationship_status = ?, incarceration_details = ? WHERE id = ?").run(
+      history, location, bio, hide_location ? 1 : 0, hide_history ? 1 : 0, final_avatar, final_status, final_interests, final_looking, final_wellness_reminders, final_age, final_gender, final_pronouns, final_looking_for, final_relationship_status, final_incarceration_details, req.userId
     );
     res.json({ success: true });
   });
@@ -1323,7 +1365,7 @@ async function startServer() {
     const users = db.prepare("SELECT id, username as name, bio, location FROM users WHERE username LIKE ? OR bio LIKE ? OR location LIKE ? LIMIT 10").all(likeQ, likeQ, likeQ);
     const jobs = db.prepare("SELECT id, title, company, location FROM jobs WHERE title LIKE ? OR company LIKE ? OR description LIKE ? LIMIT 10").all(likeQ, likeQ, likeQ);
     const housing = db.prepare("SELECT id, name, type, location FROM housing WHERE name LIKE ? OR description LIKE ? OR location LIKE ? LIMIT 10").all(likeQ, likeQ, likeQ);
-    const posts = db.prepare("SELECT id, title, content, category FROM threads WHERE title LIKE ? OR content LIKE ? LIMIT 10").all(likeQ, likeQ);
+    const posts = db.prepare("SELECT id, title, content, category FROM posts WHERE title LIKE ? OR content LIKE ? LIMIT 10").all(likeQ, likeQ);
     
     res.json({ users, jobs, housing, posts });
   });
@@ -1348,13 +1390,13 @@ async function startServer() {
     const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get() as any;
     const jobCount = db.prepare("SELECT COUNT(*) as count FROM jobs").get() as any;
     const housingCount = db.prepare("SELECT COUNT(*) as count FROM housing").get() as any;
-    const threadCount = db.prepare("SELECT COUNT(*) as count FROM threads").get() as any;
-
+    const postCount = db.prepare("SELECT COUNT(*) as count FROM posts").get() as any;
+    
     res.json({
       users: userCount.count,
       jobs: jobCount.count,
       housing: housingCount.count,
-      posts: threadCount.count
+      posts: postCount.count
     });
   });
 
@@ -1516,13 +1558,8 @@ async function startServer() {
     res.json({ success: true });
   });
 
-  const deleteThread = db.transaction((id: string) => {
-    db.prepare("DELETE FROM replies WHERE thread_id = ?").run(id);
-    db.prepare("DELETE FROM threads WHERE id = ?").run(id);
-  });
-
   app.delete("/api/admin/posts/:id", requireAuth, requireRole(['moderator', 'admin', 'super_admin']), (req: any, res) => {
-    deleteThread(req.params.id);
+    db.prepare("DELETE FROM posts WHERE id = ?").run(req.params.id);
     res.json({ success: true });
   });
 

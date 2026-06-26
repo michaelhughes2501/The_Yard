@@ -148,34 +148,9 @@ body, div, nav, button, input, textarea, select, h1, h2, h3, h4, h5, h6, p, span
 }
 
 /* Specific helper structures for popup items */
-.dark .shadow-xl,
+.dark .shadow-xl, 
 .dark .shadow-sm {
   background-color: #1c1c1a !important;
   border-color: #3e3e3a !important;
-}
-
-/* Scroll-to-top button in dark mode */
-.dark button.fixed.rounded-full {
-  background-color: #e4e3e0;
-  color: #121211;
-}
-
-/* Auth form card in dark mode */
-.dark .auth-card {
-  background-color: #1c1c1a;
-}
-
-/* Smooth focus rings */
-input:focus,
-textarea:focus,
-select:focus {
-  outline: none;
-  box-shadow: 0 0 0 2px rgba(20, 20, 20, 0.15);
-}
-
-.dark input:focus,
-.dark textarea:focus,
-.dark select:focus {
-  box-shadow: 0 0 0 2px rgba(228, 227, 224, 0.2);
 }
 

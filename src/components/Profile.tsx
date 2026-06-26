@@ -28,7 +28,14 @@ export default function Profile() {
     location: '',
     bio: '',
     hide_location: false,
-    hide_history: false
+    hide_history: false,
+    age: '',
+    gender: '',
+    pronouns: '',
+    looking_for: '',
+    relationship_status: '',
+    interests: '',
+    incarceration_details: ''
   });
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -137,7 +144,14 @@ export default function Profile() {
           location: data.location || '',
           bio: data.bio || '',
           hide_location: !!data.hide_location,
-          hide_history: !!data.hide_history
+          hide_history: !!data.hide_history,
+          age: data.age !== null && data.age !== undefined ? String(data.age) : '',
+          gender: data.gender || '',
+          pronouns: data.pronouns || '',
+          looking_for: data.looking_for || '',
+          relationship_status: data.relationship_status || '',
+          interests: data.interests || '',
+          incarceration_details: data.incarceration_details || ''
         });
       });
       fetchTrackerData();
@@ -213,6 +227,13 @@ export default function Profile() {
             bio: formData.bio,
             hide_location: formData.hide_location,
             hide_history: formData.hide_history,
+            age: formData.age ? parseInt(formData.age, 10) : null,
+            gender: formData.gender,
+            pronouns: formData.pronouns,
+            looking_for: formData.looking_for,
+            relationship_status: formData.relationship_status,
+            interests: formData.interests,
+            incarceration_details: formData.incarceration_details,
             avatar_url: avatarUrl
           })
         });
@@ -245,6 +266,13 @@ export default function Profile() {
           bio: formData.bio,
           hide_location: formData.hide_location,
           hide_history: formData.hide_history,
+          age: formData.age ? parseInt(formData.age, 10) : null,
+          gender: formData.gender,
+          pronouns: formData.pronouns,
+          looking_for: formData.looking_for,
+          relationship_status: formData.relationship_status,
+          interests: formData.interests,
+          incarceration_details: formData.incarceration_details,
           avatar_url: null
         })
       });
@@ -262,18 +290,30 @@ export default function Profile() {
   const handleSave = async () => {
     setIsSaving(true);
     try {
+      const parsedAge = formData.age ? parseInt(formData.age, 10) : null;
+      const savePayload = {
+        ...formData,
+        age: parsedAge
+      };
       const res = await fetch('/api/users/profile', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(savePayload)
       });
       if (res.ok) {
         setIsEditing(false);
         // Update local profile state
-        setProfile(prev => prev ? { ...prev, ...formData, hide_location: formData.hide_location ? 1 : 0, hide_history: formData.hide_history ? 1 : 0 } : null);
+        setProfile(prev => prev ? { 
+          ...prev, 
+          ...savePayload, 
+          hide_location: formData.hide_location ? 1 : 0, 
+          hide_history: formData.hide_history ? 1 : 0 
+        } : null);
+        // Sync context
+        updateUser(savePayload);
       }
     } catch (err) {
       console.error(err);
@@ -457,37 +497,155 @@ export default function Profile() {
 
         {isEditing ? (
           <div className="space-y-6">
+            <div className="border-b border-[#141414]/15 pb-4">
+              <span className="text-[10px] uppercase font-mono tracking-widest text-amber-800 font-bold block mb-1">
+                Section 1 // Personal Status & Connection Details
+              </span>
+              <h4 className="text-lg font-serif italic font-bold">Identity & Seeking Goals</h4>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs uppercase tracking-widest font-bold mb-2">Age</label>
+                <input 
+                  type="number"
+                  min="18"
+                  max="120"
+                  value={formData.age}
+                  onChange={e => setFormData({...formData, age: e.target.value})}
+                  className="w-full border border-[#141414] p-3 focus:outline-none focus:ring-2 focus:ring-[#141414]/10"
+                  placeholder="e.g. 32"
+                />
+              </div>
+              <div>
+                <label className="block text-xs uppercase tracking-widest font-bold mb-2">Gender Identity</label>
+                <select 
+                  value={formData.gender}
+                  onChange={e => setFormData({...formData, gender: e.target.value})}
+                  className="w-full bg-white border border-[#141414] p-3 focus:outline-none focus:ring-2 focus:ring-[#141414]/10"
+                >
+                  <option value="">Select Gender</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Non-Binary">Non-Binary</option>
+                  <option value="Transgender">Transgender</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs uppercase tracking-widest font-bold mb-2">Pronouns</label>
+                <input 
+                  type="text"
+                  value={formData.pronouns}
+                  onChange={e => setFormData({...formData, pronouns: e.target.value})}
+                  className="w-full border border-[#141414] p-3 focus:outline-none focus:ring-2 focus:ring-[#141414]/10"
+                  placeholder="e.g. he/him"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs uppercase tracking-widest font-bold mb-2">Relationship Status</label>
+                <select 
+                  value={formData.relationship_status}
+                  onChange={e => setFormData({...formData, relationship_status: e.target.value})}
+                  className="w-full bg-white border border-[#141414] p-3 focus:outline-none focus:ring-2 focus:ring-[#141414]/10"
+                >
+                  <option value="">Select Status</option>
+                  <option value="Single">Single</option>
+                  <option value="Separated">Separated</option>
+                  <option value="Divorced">Divorced</option>
+                  <option value="In a Relationship">In a Relationship</option>
+                  <option value="It's Complicated">It's Complicated</option>
+                  <option value="Open Relationship">Open Relationship</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs uppercase tracking-widest font-bold mb-2">Looking For / Intent</label>
+                <select 
+                  value={formData.looking_for}
+                  onChange={e => setFormData({...formData, looking_for: e.target.value})}
+                  className="w-full bg-white border border-[#141414] p-3 focus:outline-none focus:ring-2 focus:ring-[#141414]/10"
+                >
+                  <option value="">What are you looking for?</option>
+                  <option value="Romance & Partnership">Romance & Partnership</option>
+                  <option value="Deep Connection / Dating">Deep Connection / Dating</option>
+                  <option value="Casual Conversations / Friendship">Casual Conversations / Friendship</option>
+                  <option value="Mutual Reentry Support">Mutual Reentry Support</option>
+                  <option value="Mentorship & Growth">Mentorship & Growth</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="border-b border-[#141414]/15 pb-4 pt-2">
+              <span className="text-[10px] uppercase font-mono tracking-widest text-[#141414]/60 font-bold block mb-1">
+                Section 2 // Social Spark & Profile Bio
+              </span>
+              <h4 className="text-lg font-serif italic font-bold">Interests & Self Details</h4>
+            </div>
+
             <div>
-              <label className="block text-xs uppercase tracking-widest font-bold mb-2">Bio</label>
+              <label className="block text-xs uppercase tracking-widest font-bold mb-2">Interests (Comma-separated tags)</label>
+              <input 
+                type="text"
+                value={formData.interests}
+                onChange={e => setFormData({...formData, interests: e.target.value})}
+                className="w-full border border-[#141414] p-3 focus:outline-none focus:ring-2 focus:ring-[#141414]/10"
+                placeholder="e.g. landscaping, technology, weightlifting, coding, poetry, recovery"
+              />
+              <span className="text-[10px] text-gray-500 font-mono mt-1 block">Separate interest tags with commas for beautiful badge displays.</span>
+            </div>
+
+            <div>
+              <label className="block text-xs uppercase tracking-widest font-bold mb-2">Introduction / Bio</label>
               <textarea 
                 value={formData.bio}
                 onChange={e => setFormData({...formData, bio: e.target.value})}
                 className="w-full border border-[#141414] p-3 min-h-[100px] focus:outline-none focus:ring-2 focus:ring-[#141414]/10"
-                placeholder="Tell the community about yourself..."
+                placeholder="Tell potential matches about your transition journey, values, and what makes you unique..."
               />
             </div>
+
+            <div className="border-b border-[#141414]/15 pb-4 pt-2">
+              <span className="text-[10px] uppercase font-mono tracking-widest text-amber-800 font-bold block mb-1">
+                Section 3 // Incarceration Particulars & Transition Path
+              </span>
+              <h4 className="text-lg font-serif italic font-bold">My Incarceration & Reentry Story</h4>
+            </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs uppercase tracking-widest font-bold mb-2">Location</label>
-                <input 
-                  type="text"
-                  value={formData.location}
-                  onChange={e => setFormData({...formData, location: e.target.value})}
-                  className="w-full border border-[#141414] p-3 focus:outline-none focus:ring-2 focus:ring-[#141414]/10"
-                  placeholder="City, State"
-                />
-              </div>
-              <div>
-                <label className="block text-xs uppercase tracking-widest font-bold mb-2">Facility History</label>
+                <label className="block text-xs uppercase tracking-widest font-bold mb-2">Primary Transitional Facility</label>
                 <input 
                   type="text"
                   value={formData.history}
                   onChange={e => setFormData({...formData, history: e.target.value})}
                   className="w-full border border-[#141414] p-3 focus:outline-none focus:ring-2 focus:ring-[#141414]/10"
-                  placeholder="e.g. San Quentin (2015-2020)"
+                  placeholder="e.g. San Quentin (2015-2022)"
                 />
               </div>
+              <div>
+                <label className="block text-xs uppercase tracking-widest font-bold mb-2">Location / Transit Area</label>
+                <input 
+                  type="text"
+                  value={formData.location}
+                  onChange={e => setFormData({...formData, location: e.target.value})}
+                  className="w-full border border-[#141414] p-3 focus:outline-none focus:ring-2 focus:ring-[#141414]/10"
+                  placeholder="e.g. Denver, CO"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs uppercase tracking-widest font-bold mb-2">Incarceration History / Sentencing details</label>
+              <textarea 
+                value={formData.incarceration_details}
+                onChange={e => setFormData({...formData, incarceration_details: e.target.value})}
+                className="w-full border border-[#141414] p-3 min-h-[90px] focus:outline-none focus:ring-2 focus:ring-[#141414]/10"
+                placeholder="Details of sentence served, milestones unlocked inside, release year, or parole expectations..."
+              />
+              <span className="text-[10px] text-gray-500 font-mono mt-1 block">Help matching peers understand your perspective; honesty builds the strongest connections.</span>
             </div>
 
             <div className="pt-6 border-t border-[#141414]/10 space-y-4">
@@ -502,7 +660,7 @@ export default function Profile() {
                   onChange={e => setFormData({...formData, hide_location: e.target.checked})}
                   className="w-5 h-5 accent-[#141414]"
                 />
-                <span className="text-sm">Hide my location from the public directory</span>
+                <span className="text-sm">Hide my physical location from the public database</span>
               </label>
               
               <label className="flex items-center gap-3 cursor-pointer">
@@ -512,7 +670,7 @@ export default function Profile() {
                   onChange={e => setFormData({...formData, hide_history: e.target.checked})}
                   className="w-5 h-5 accent-[#141414]"
                 />
-                <span className="text-sm">Hide my facility history from the public directory</span>
+                <span className="text-sm">Hide my facility track history from the public database</span>
               </label>
             </div>
 
@@ -520,47 +678,94 @@ export default function Profile() {
               <button 
                 onClick={handleSave}
                 disabled={isSaving}
-                className="flex-1 bg-[#141414] text-[#E4E3E0] p-3 text-xs uppercase tracking-widest font-bold hover:opacity-90 transition-opacity flex justify-center items-center gap-2"
+                className="flex-1 bg-[#141414] text-[#E4E3E0] p-3 text-xs uppercase tracking-widest font-bold hover:opacity-90 transition-opacity flex justify-center items-center gap-2 cursor-pointer"
               >
-                <Save size={16} /> {isSaving ? 'Saving...' : 'Save Changes'}
+                <Save size={16} /> {isSaving ? 'Saving...' : 'Save Profile Changes'}
               </button>
               <button 
                 onClick={() => setIsEditing(false)}
-                className="flex-1 border border-[#141414] p-3 text-xs uppercase tracking-widest font-bold hover:bg-[#141414]/5 transition-colors"
+                className="flex-1 border border-[#141414] p-3 text-xs uppercase tracking-widest font-bold hover:bg-[#141414]/5 transition-colors cursor-pointer"
               >
                 Cancel
               </button>
             </div>
           </div>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-6 text-left">
+            {/* Dating Status Header Block */}
+            <div className="bg-amber-50/40 p-4 border border-dashed border-[#141414]/30">
+              <div className="flex flex-wrap items-center gap-2 text-xs font-mono font-bold uppercase tracking-wider text-amber-950">
+                {profile.age && <span>{profile.age} years old</span>}
+                {profile.age && (profile.gender || profile.pronouns) && <span>•</span>}
+                {profile.gender && <span>{profile.gender}</span>}
+                {profile.pronouns && <span className="opacity-60">({profile.pronouns})</span>}
+                {(profile.age || profile.gender) && profile.relationship_status && <span>•</span>}
+                {profile.relationship_status && <span className="bg-amber-100 text-amber-950 px-2 py-0.5 rounded-sm">{profile.relationship_status}</span>}
+              </div>
+              {profile.looking_for && (
+                <div className="text-xs font-serif italic mt-1.5 text-gray-700">
+                  <span className="font-mono text-[10px] uppercase font-bold not-italic mr-1.5 text-neutral-500">Currently Seeking:</span>
+                  {profile.looking_for}
+                </div>
+              )}
+            </div>
+
             {profile.bio && (
               <div>
-                <h4 className="text-xs uppercase tracking-widest font-bold mb-2 opacity-60">About</h4>
-                <p className="leading-relaxed">{profile.bio}</p>
+                <h4 className="text-xs uppercase tracking-widest font-bold mb-1.5 opacity-60">My Story & Bio</h4>
+                <p className="leading-relaxed text-sm md:text-base text-gray-800 font-light">{profile.bio}</p>
               </div>
             )}
             
+            {/* Interests Section */}
+            {profile.interests && (
+              <div>
+                <h4 className="text-xs uppercase tracking-widest font-bold mb-2 opacity-60">Core Spark Interests</h4>
+                <div className="flex flex-wrap gap-1.5">
+                  {profile.interests.split(',').map((item, index) => (
+                    <span 
+                      key={index} 
+                      className="text-[10px] bg-[#141414]/5 text-[#141414] border border-[#141414]/15 px-2.5 py-0.5 uppercase tracking-wider font-mono font-black"
+                    >
+                      #{item.trim()}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-[#141414]/10">
               <div>
-                <h4 className="text-xs uppercase tracking-widest font-bold mb-2 opacity-60 flex items-center gap-2">
-                  <MapPin size={14} /> Location
+                <h4 className="text-xs uppercase tracking-widest font-bold mb-1.5 opacity-60 flex items-center gap-2">
+                  <MapPin size={14} /> Reentry Location
                 </h4>
-                <p className="flex items-center gap-2">
+                <p className="flex items-center gap-2 text-sm font-semibold">
                   {profile.location || 'Not specified'}
                   {profile.hide_location === 1 && <span title="Hidden from public"><EyeOff size={14} className="opacity-50" /></span>}
                 </p>
               </div>
               <div>
-                <h4 className="text-xs uppercase tracking-widest font-bold mb-2 opacity-60 flex items-center gap-2">
-                  <Building size={14} /> Facility History
+                <h4 className="text-xs uppercase tracking-widest font-bold mb-1.5 opacity-60 flex items-center gap-2">
+                  <Building size={14} /> Incarcerated Facility Track
                 </h4>
-                <p className="flex items-center gap-2">
+                <p className="flex items-center gap-2 text-sm font-semibold">
                   {profile.history || 'Not specified'}
                   {profile.hide_history === 1 && <span title="Hidden from public"><EyeOff size={14} className="opacity-50" /></span>}
                 </p>
               </div>
             </div>
+
+            {/* Incarceration background narrative section */}
+            {profile.incarceration_details && (
+              <div className="bg-[#141414]/5 p-4 border border-[#141414]/10 mt-4 rounded-sm">
+                <h4 className="text-[10px] uppercase font-mono tracking-widest text-amber-900 font-bold mb-2">
+                  Incarceration Background & Timeline
+                </h4>
+                <p className="text-xs leading-relaxed text-neutral-800 whitespace-pre-wrap font-sans">
+                  {profile.incarceration_details}
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>

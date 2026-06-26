@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
-import {
-  Users,
-  Send,
-  ShieldCheck,
-  Scale,
+import React, { useState, useEffect } from 'react';
+import { 
+  Users, 
+  Send, 
+  ShieldCheck, 
+  Scale, 
   LogOut,
   Menu,
   X,
@@ -20,9 +20,7 @@ import {
   TrendingUp,
   Calendar,
   Sun,
-  Moon,
-  ChevronDown,
-  ArrowUp
+  Moon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
@@ -66,9 +64,6 @@ function MainApp() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [showMoreMenu, setShowMoreMenu] = useState(false);
-  const [showScrollTop, setShowScrollTop] = useState(false);
-  const moreMenuRef = useRef<HTMLDivElement>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     return (localStorage.getItem('theme') as 'light' | 'dark') || 'light';
   });
@@ -132,23 +127,6 @@ function MainApp() {
     setNotifications(prev => prev.map(n => ({ ...n, is_read: 1 })));
   };
 
-  useEffect(() => {
-    const onScroll = () => setShowScrollTop(window.scrollY > 400);
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target instanceof Node ? e.target : null;
-      if (target && moreMenuRef.current && !moreMenuRef.current.contains(target)) {
-        setShowMoreMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
   if (isLoading) {
     return <div className="min-h-screen bg-[#E4E3E0] flex items-center justify-center font-serif italic text-2xl">Loading...</div>;
   }
@@ -157,37 +135,22 @@ function MainApp() {
     return <Auth />;
   }
 
-  const primaryTabs = [
+  const tabs = [
     { id: 'yard', name: 'The Yard', icon: Users },
+    { id: 'progress', name: 'Progress Tracker', icon: TrendingUp },
+    { id: 'calendar', name: 'Calendar', icon: Calendar },
     { id: 'opportunities', name: 'Opportunities', icon: Briefcase },
     { id: 'forum', name: 'Forum', icon: MessageSquare },
     { id: 'kites', name: 'Kites', icon: Send },
-    { id: 'resources', name: 'Resources', icon: ShieldCheck },
     { id: 'mentorship', name: 'Mentorship', icon: ShieldCheck },
-  ];
-
-  const secondaryTabs = [
-    { id: 'progress', name: 'Progress Tracker', icon: TrendingUp },
-    { id: 'calendar', name: 'Calendar', icon: Calendar },
-    { id: 'mental-health', name: 'Wellness', icon: HeartPulse },
     { id: 'vault', name: 'The Vault', icon: Archive },
+    { id: 'resources', name: 'Resources', icon: ShieldCheck },
+    { id: 'mental-health', name: 'Wellness', icon: HeartPulse },
     { id: 'tools', name: 'Legal Tools', icon: Scale },
     { id: 'cases', name: 'Case Tracker', icon: Scale },
     { id: 'workspace', name: 'Workspace', icon: Globe },
     { id: 'help', name: 'Help Center', icon: HelpCircle },
   ];
-
-  // All tabs combined for the mobile menu
-  const tabs = [...primaryTabs, ...secondaryTabs];
-
-  const navigateTo = (tabId: string) => {
-    if (tabId === 'opportunities') setOpportunitiesSubTab('jobs');
-    if (tabId === 'resources') setResourcesShowAddPO(false);
-    setActiveTab(tabId as Tab);
-    setShowMoreMenu(false);
-    setIsMenuOpen(false);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
 
   const renderContent = () => {
     switch (activeTab) {
@@ -223,93 +186,50 @@ function MainApp() {
         </div>
 
         {/* Desktop Nav */}
-        <div className="hidden md:flex gap-4 items-center">
-          {/* Icon controls */}
-          <button
-            onClick={() => setTheme(prev => prev === 'light' ? 'dark' : 'light')}
-            className="p-2 hover:bg-[#141414]/5 rounded-full transition-colors opacity-60 hover:opacity-100"
-            title={theme === 'light' ? 'Dark Mode' : 'Light Mode'}
-          >
-            {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
-          </button>
-
-          <button
-            onClick={() => setIsSearchOpen(true)}
-            className="p-2 hover:bg-[#141414]/5 rounded-full transition-colors opacity-60 hover:opacity-100"
-            title="Search"
-          >
-            <Search size={18} />
-          </button>
-
-          <div className="w-px h-5 bg-[#141414]/20" />
-
-          {/* Primary tabs */}
-          {primaryTabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => navigateTo(tab.id)}
-              className={cn(
-                "text-xs font-medium uppercase tracking-widest transition-all hover:opacity-100 pb-0.5",
-                activeTab === tab.id
-                  ? "opacity-100 border-b-2 border-current"
-                  : "opacity-40"
-              )}
+          <div className="hidden md:flex gap-6 items-center flex-wrap justify-center">
+            <button 
+              onClick={() => setTheme(prev => prev === 'light' ? 'dark' : 'light')}
+              className="p-2 hover:bg-[#141414]/5 rounded-full transition-colors opacity-65 hover:opacity-100"
+              title={theme === 'light' ? 'Dark Mode' : 'Light Mode'}
             >
-              {tab.name}
+              {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
             </button>
-          ))}
 
-          {/* More dropdown */}
-          <div className="relative" ref={moreMenuRef}>
-            <button
-              onClick={() => setShowMoreMenu(p => !p)}
-              aria-haspopup="true"
-              aria-expanded={showMoreMenu}
-              className={cn(
-                "flex items-center gap-1 text-xs font-medium uppercase tracking-widest transition-all hover:opacity-100 pb-0.5",
-                secondaryTabs.some(t => t.id === activeTab)
-                  ? "opacity-100 border-b-2 border-current"
-                  : "opacity-40"
-              )}
+            <button 
+              onClick={() => setIsSearchOpen(true)}
+              className="p-2 hover:bg-[#141414]/5 rounded-full transition-colors opacity-60 hover:opacity-100"
+              title="Search"
             >
-              More <ChevronDown size={12} className={cn("transition-transform", showMoreMenu && "rotate-180")} />
+              <Search size={20} />
             </button>
-            <AnimatePresence>
-              {showMoreMenu && (
-                <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 8 }}
-                  transition={{ duration: 0.15 }}
-                  className="absolute right-0 mt-3 w-48 bg-white border border-[#141414] shadow-xl z-50 py-1"
-                >
-                  {secondaryTabs.map(tab => (
-                    <button
-                      key={tab.id}
-                      onClick={() => navigateTo(tab.id)}
-                      className={cn(
-                        "w-full text-left px-4 py-2.5 text-xs uppercase tracking-widest hover:bg-[#141414]/5 transition-colors flex items-center gap-2",
-                        activeTab === tab.id ? "font-bold opacity-100" : "opacity-60"
-                      )}
-                    >
-                      <tab.icon size={13} />
-                      {tab.name}
-                    </button>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
 
-          <div className="w-px h-5 bg-[#141414]/20" />
-
-          {/* Notifications */}
-          <div className="relative">
-            <button
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  if (tab.id === 'opportunities') {
+                    setOpportunitiesSubTab('jobs');
+                  }
+                  if (tab.id === 'resources') {
+                    setResourcesShowAddPO(false);
+                  }
+                  setActiveTab(tab.id as Tab);
+                }}
+                className={cn(
+                  "text-xs font-medium uppercase tracking-widest transition-all hover:opacity-100",
+                  activeTab === tab.id ? "opacity-100 border-b-2 border-[#141414]" : "opacity-40"
+                )}
+              >
+                {tab.name}
+              </button>
+            ))}
+            
+            <div className="relative ml-2">
+            <button 
               onClick={() => setShowNotifications(!showNotifications)}
               className="relative p-2 hover:bg-[#141414]/5 rounded-full transition-colors"
             >
-              <Bell size={18} />
+              <Bell size={20} />
               {notifications.filter(n => !n.is_read).length > 0 && (
                 <span className="absolute top-0 right-0 w-4 h-4 bg-red-600 text-white text-[10px] font-bold flex items-center justify-center rounded-full">
                   {notifications.filter(n => !n.is_read).length}
@@ -362,43 +282,41 @@ function MainApp() {
             </AnimatePresence>
           </div>
 
-          {/* Profile */}
-          <button
-            onClick={() => navigateTo('profile')}
-            className={cn(
-              "flex items-center gap-1.5 text-xs uppercase tracking-widest transition-opacity hover:opacity-100",
-              activeTab === 'profile' ? "opacity-100 font-bold" : "opacity-40"
-            )}
-          >
-            {user?.avatar_url ? (
-              <img
-                src={user.avatar_url}
-                alt={user?.username}
-                className="w-5 h-5 rounded-full object-cover border border-[#141414]/20"
-              />
-            ) : (
-              <UserCircle size={16} />
-            )}
-            Profile
-          </button>
-
-          {['super_admin', 'admin', 'moderator'].includes(user?.role || (user?.is_admin === 1 ? 'super_admin' : 'user')) && (
-            <button
-              onClick={() => navigateTo('admin')}
-              className="flex items-center gap-1.5 text-xs uppercase tracking-widest text-red-600 opacity-60 hover:opacity-100 transition-opacity"
+            <button 
+              onClick={() => setActiveTab('profile')}
+              className={cn(
+                "ml-2 flex items-center gap-2 text-xs uppercase tracking-widest transition-opacity hover:opacity-100",
+                activeTab === 'profile' ? "opacity-100 font-bold" : "opacity-40"
+              )}
             >
-              <ShieldAlert size={14} /> Admin
+              {user?.avatar_url ? (
+                <img 
+                  src={user.avatar_url} 
+                  alt={user?.username} 
+                  className="w-5 h-5 rounded-full object-cover border border-[#141414]/20"
+                />
+              ) : (
+                <UserCircle size={16} />
+              )}
+              Profile
             </button>
-          )}
 
-          <button
-            onClick={logout}
-            className="flex items-center gap-1.5 text-xs uppercase tracking-widest opacity-40 hover:opacity-100 transition-opacity"
-            title="Logout"
-          >
-            <LogOut size={14} />
-          </button>
-        </div>
+            {['super_admin', 'admin', 'moderator'].includes(user?.role || (user?.is_admin === 1 ? 'super_admin' : 'user')) && (
+              <button 
+                onClick={() => setActiveTab('admin')}
+                className="ml-2 flex items-center gap-2 text-xs uppercase tracking-widest text-red-600 opacity-60 hover:opacity-100 transition-opacity"
+              >
+                <ShieldAlert size={16} /> Admin
+              </button>
+            )}
+
+            <button 
+              onClick={logout}
+              className="ml-2 flex items-center gap-2 text-xs uppercase tracking-widest opacity-40 hover:opacity-100 transition-opacity"
+            >
+              <LogOut size={16} /> Logout
+            </button>
+          </div>
 
         <button className="md:hidden" onClick={() => setIsMenuOpen(!isMenuOpen)}>
           {isMenuOpen ? <X /> : <Menu />}
@@ -425,24 +343,36 @@ function MainApp() {
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
-                  onClick={() => navigateTo(tab.id)}
-                  className={cn(
-                    "text-3xl font-serif italic text-left border-b border-[#141414]/10 pb-4",
-                    activeTab === tab.id && "font-bold"
-                  )}
+                  onClick={() => {
+                    if (tab.id === 'opportunities') {
+                      setOpportunitiesSubTab('jobs');
+                    }
+                    if (tab.id === 'resources') {
+                      setResourcesShowAddPO(false);
+                    }
+                    setActiveTab(tab.id as Tab);
+                    setIsMenuOpen(false);
+                  }}
+                  className="text-3xl font-serif italic text-left border-b border-[#141414]/10 pb-4"
                 >
                   {tab.name}
                 </button>
               ))}
-              <button
-                onClick={() => navigateTo('profile')}
+              <button 
+                onClick={() => { setActiveTab('help'); setIsMenuOpen(false); }}
+                className="text-3xl font-serif italic text-left border-b border-[#141414]/10 pb-4"
+              >
+                Help Center
+              </button>
+              <button 
+                onClick={() => { setActiveTab('profile'); setIsMenuOpen(false); }}
                 className="text-3xl font-serif italic text-left border-b border-[#141414]/10 pb-4 flex items-center gap-3"
               >
                 {user?.avatar_url ? (
-                  <img
-                    src={user.avatar_url}
-                    alt={user?.username}
-                    className="w-10 h-10 rounded-full object-cover border border-[#141414]/20"
+                  <img 
+                    src={user.avatar_url} 
+                    alt={user?.username} 
+                    className="w-10 h-10 rounded-full object-cover border border-[#141414]/20 animate-fade-in"
                   />
                 ) : (
                   <UserCircle size={28} className="opacity-40" />
@@ -450,14 +380,14 @@ function MainApp() {
                 Profile
               </button>
               {['super_admin', 'admin', 'moderator'].includes(user?.role || (user?.is_admin === 1 ? 'super_admin' : 'user')) && (
-                <button
-                  onClick={() => navigateTo('admin')}
+                <button 
+                  onClick={() => { setActiveTab('admin'); setIsMenuOpen(false); }}
                   className="text-3xl font-serif italic text-left border-b border-[#141414]/10 pb-4 text-red-600"
                 >
                   Admin Dashboard
                 </button>
               )}
-              <button
+              <button 
                 onClick={() => { logout(); setIsMenuOpen(false); }}
                 className="text-xl font-serif italic text-left text-red-600 pt-4"
               >
@@ -482,23 +412,7 @@ function MainApp() {
 
       <SOSButton />
 
-      {/* Scroll to top */}
-      <AnimatePresence>
-        {showScrollTop && (
-          <motion.button
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.8 }}
-            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-            className="fixed bottom-24 left-4 z-40 bg-[#141414] text-[#E4E3E0] p-3 rounded-full shadow-lg hover:opacity-80 transition-opacity"
-            title="Back to top"
-          >
-            <ArrowUp size={18} />
-          </motion.button>
-        )}
-      </AnimatePresence>
-
-      <QuickActions
+      <QuickActions 
         onAction={(action: 'jobs' | 'housing' | 'contact') => {
           if (action === 'jobs') {
             setOpportunitiesSubTab('jobs');
@@ -533,21 +447,9 @@ function MainApp() {
           <div>
             <h4 className="text-xs uppercase tracking-widest opacity-40 mb-4">Quick Links</h4>
             <ul className="flex flex-col gap-2 text-sm">
-              <li>
-                <button onClick={() => navigateTo('mental-health')} className="hover:underline text-left">
-                  Mental Health Support
-                </button>
-              </li>
-              <li>
-                <button onClick={() => navigateTo('resources')} className="hover:underline text-left">
-                  Parole Resources
-                </button>
-              </li>
-              <li>
-                <button onClick={() => navigateTo('tools')} className="hover:underline text-left">
-                  Legal Aid
-                </button>
-              </li>
+              <li><a href="#" className="hover:underline">Mental Health Support</a></li>
+              <li><a href="#" className="hover:underline">Parole Resources</a></li>
+              <li><a href="#" className="hover:underline">Legal Aid</a></li>
             </ul>
           </div>
           <div>
@@ -556,7 +458,7 @@ function MainApp() {
           </div>
         </div>
         <div className="max-w-7xl mx-auto mt-12 pt-8 border-t border-white/10 text-[10px] uppercase tracking-widest opacity-40 flex justify-between">
-          <span>© {new Date().getFullYear()} The Yard</span>
+          <span>© 2026 The Yard</span>
           <span>Built for Redemption</span>
         </div>
       </footer>

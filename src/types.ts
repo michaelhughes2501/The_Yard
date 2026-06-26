@@ -2,7 +2,7 @@ export interface User {
   id: string;
   name: string;
   email?: string;
-  history?: string;
+  history?: string; // Facility History
   location?: string;
   bio?: string;
   avatar?: string;
@@ -13,8 +13,14 @@ export interface User {
   is_admin?: number;
   public_status?: string;
   interests?: string;
-  looking_to_meet?: boolean;
+  looking_to_meet?: boolean; // Signal availability to meet ("Yard" status)
   wellness_reminders?: boolean;
+  age?: number;
+  gender?: string;
+  pronouns?: string;
+  looking_for?: string; // Relationship goals / connection intent
+  relationship_status?: string;
+  incarceration_details?: string; // Release date, conviction context, sentence served, etc.
 }
 
 export interface Job {
