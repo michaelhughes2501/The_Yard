@@ -35,13 +35,21 @@ import {
   listGoogleContacts,
   listGoogleCalendarEvents,
   updateGoogleCalendarEvent,
-  addGoogleCalendarEvent
+  addGoogleCalendarEvent,
+  createGoogleSheet,
+  listGoogleTasksLists,
+  listGoogleTasks,
+  createGoogleTask,
+  listGoogleClassroomCourses,
+  listGoogleClassroomCourseWork,
+  createGoogleSlide,
+  createGoogleForm
 } from '../services/googleWorkspace.ts';
 import ConfirmationDialog from './ConfirmationDialog';
 
 export default function WorkspaceHub() {
   const { token } = useAuth();
-  const [activeSubTab, setActiveSubTab] = useState<'drive' | 'gmail' | 'chat' | 'meet' | 'contacts'>('drive');
+  const [activeSubTab, setActiveSubTab] = useState<'drive' | 'gmail' | 'chat' | 'meet' | 'contacts' | 'sheets' | 'tasks' | 'classroom' | 'slides' | 'forms' | 'picker'>('drive');
   const [isConnected, setIsConnected] = useState(isGoogleConnected());
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -55,6 +63,20 @@ export default function WorkspaceHub() {
   const [gmailMessages, setGmailMessages] = useState<any[]>([]);
   const [chatSpaces, setChatSpaces] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
+  
+  // New States
+  const [sheetsTitle, setSheetsTitle] = useState('');
+  const [slidesTitle, setSlidesTitle] = useState('');
+  const [formsTitle, setFormsTitle] = useState('');
+  const [pickedFile, setPickedFile] = useState<any>(null);
+
+  const [tasksLists, setTasksLists] = useState<any[]>([]);
+  const [selectedTaskList, setSelectedTaskList] = useState('');
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [classroomCourses, setClassroomCourses] = useState<any[]>([]);
+  const [selectedCourse, setSelectedCourse] = useState('');
+  const [courseWork, setCourseWork] = useState<any[]>([]);
 
   // Form States
   const [emailTo, setEmailTo] = useState('');
@@ -220,7 +242,7 @@ export default function WorkspaceHub() {
     setLoading(true);
     setErrorMsg('');
     try {
-      if (activeSubTab === 'drive') {
+      if (activeSubTab === 'drive' || activeSubTab === 'picker') {
         const files = await listGoogleDriveFiles();
         setDriveFiles(files);
       } else if (activeSubTab === 'gmail') {
@@ -232,6 +254,18 @@ export default function WorkspaceHub() {
       } else if (activeSubTab === 'contacts') {
         const conns = await listGoogleContacts();
         setContacts(conns);
+      } else if (activeSubTab === 'tasks') {
+        const lists = await listGoogleTasksLists();
+        setTasksLists(lists);
+        if (lists.length > 0 && !selectedTaskList) {
+          setSelectedTaskList(lists[0].id);
+        }
+      } else if (activeSubTab === 'classroom') {
+        const courses = await listGoogleClassroomCourses();
+        setClassroomCourses(courses);
+        if (courses.length > 0 && !selectedCourse) {
+          setSelectedCourse(courses[0].id);
+        }
       }
     } catch (err: any) {
       console.error(`Error refreshing workspace ${activeSubTab} data:`, err);
@@ -251,6 +285,18 @@ export default function WorkspaceHub() {
       refreshSubTabData();
     }
   }, [activeSubTab, isConnected]);
+
+  useEffect(() => {
+    if (activeSubTab === 'tasks' && selectedTaskList) {
+      listGoogleTasks(selectedTaskList).then(setTasks).catch(err => setErrorMsg(err.message));
+    }
+  }, [selectedTaskList, activeSubTab]);
+
+  useEffect(() => {
+    if (activeSubTab === 'classroom' && selectedCourse) {
+      listGoogleClassroomCourseWork(selectedCourse).then(setCourseWork).catch(err => setErrorMsg(err.message));
+    }
+  }, [selectedCourse, activeSubTab]);
 
   const handleConnect = async () => {
     setLoading(true);
@@ -476,46 +522,94 @@ export default function WorkspaceHub() {
         /* Connected Workspace Management Area */
         <div className="space-y-6" id="workspace-active-panel">
           {/* Bento Sub tabs */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 border border-[#141414] bg-white text-xs font-bold uppercase tracking-widest">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-[repeat(11,minmax(0,1fr))] border border-[#141414] bg-white text-xs font-bold uppercase tracking-widest">
             <button
               onClick={() => setActiveSubTab('drive')}
-              className={`p-4 flex items-center justify-center gap-2 border-r border-b sm:border-b-0 border-[#141414] transition-colors ${
+              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b lg:border-b-0 border-[#141414] transition-colors ${
                 activeSubTab === 'drive' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-gray-100'
               }`}
             >
-              <FolderLock size={14} /> Drive
+              <FolderLock size={16} /> Drive
             </button>
             <button
               onClick={() => setActiveSubTab('gmail')}
-              className={`p-4 flex items-center justify-center gap-2 border-r border-b sm:border-b-0 border-[#141414] transition-colors ${
+              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b lg:border-b-0 border-[#141414] transition-colors ${
                 activeSubTab === 'gmail' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-gray-100'
               }`}
             >
-              <Mail size={14} /> Gmail
+              <Mail size={16} /> Gmail
             </button>
             <button
               onClick={() => setActiveSubTab('chat')}
-              className={`p-4 flex items-center justify-center gap-2 border-r border-b sm:border-b-0 border-[#141414] transiton-colors ${
+              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b lg:border-b-0 border-[#141414] transition-colors ${
                 activeSubTab === 'chat' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-gray-100'
               }`}
             >
-              <MessageSquare size={14} /> Chat
+              <MessageSquare size={16} /> Chat
             </button>
             <button
               onClick={() => setActiveSubTab('meet')}
-              className={`p-4 flex items-center justify-center gap-2 border-r border-[#141414] transition-colors ${
+              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b lg:border-b-0 border-[#141414] transition-colors ${
                 activeSubTab === 'meet' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-gray-100'
               }`}
             >
-              <Video size={14} /> Meetings
+              <Video size={16} /> Meetings
             </button>
             <button
               onClick={() => setActiveSubTab('contacts')}
-              className={`p-4 flex items-center justify-center gap-2 col-span-2 sm:col-span-1 transition-colors ${
+              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b lg:border-b-0 border-[#141414] transition-colors ${
                 activeSubTab === 'contacts' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-gray-100'
               }`}
             >
-              <Contact size={14} /> Contacts
+              <Contact size={16} /> Contacts
+            </button>
+            <button
+              onClick={() => setActiveSubTab('sheets')}
+              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b lg:border-b-0 border-[#141414] transition-colors ${
+                activeSubTab === 'sheets' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-gray-100'
+              }`}
+            >
+              <Briefcase size={16} /> Sheets
+            </button>
+            <button
+              onClick={() => setActiveSubTab('tasks')}
+              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b sm:border-b-0 lg:border-b-0 border-[#141414] transition-colors ${
+                activeSubTab === 'tasks' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-gray-100'
+              }`}
+            >
+              <CheckCircle size={16} /> Tasks
+            </button>
+            <button
+              onClick={() => setActiveSubTab('classroom')}
+              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b sm:border-b-0 lg:border-b-0 border-[#141414] transition-colors ${
+                activeSubTab === 'classroom' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-gray-100'
+              }`}
+            >
+              <Briefcase size={16} /> Classes
+            </button>
+            <button
+              onClick={() => setActiveSubTab('slides')}
+              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b sm:border-b-0 lg:border-b-0 border-[#141414] transition-colors ${
+                activeSubTab === 'slides' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-gray-100'
+              }`}
+            >
+              <Plus size={16} /> Slides
+            </button>
+            <button
+              onClick={() => setActiveSubTab('forms')}
+              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b sm:border-b-0 lg:border-b-0 border-[#141414] transition-colors ${
+                activeSubTab === 'forms' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-gray-100'
+              }`}
+            >
+              <CheckCircle size={16} /> Forms
+            </button>
+            <button
+              onClick={() => setActiveSubTab('picker')}
+              className={`p-4 flex flex-col items-center justify-center gap-2 border-b sm:border-b-0 lg:border-b-0 border-[#141414] transition-colors ${
+                activeSubTab === 'picker' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-gray-100'
+              }`}
+            >
+              <FolderLock size={16} /> Picker
             </button>
           </div>
 
@@ -902,6 +996,330 @@ export default function WorkspaceHub() {
                         </div>
                       </div>
                     ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* GOOGLE SHEETS CREATOR */}
+            {activeSubTab === 'sheets' && (
+              <div className="max-w-xl space-y-6" id="subtab-sheets">
+                <div>
+                  <h3 className="text-xl font-serif italic">Google Sheets Creator</h3>
+                  <p className="text-xs opacity-60">Create a new spreadsheet to track expenses, progress, or other personal data.</p>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs uppercase font-bold tracking-widest mb-1 text-gray-700">Sheet Title</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Monthly Budget"
+                      value={sheetsTitle}
+                      onChange={e => setSheetsTitle(e.target.value)}
+                      className="w-full border border-[#141414] p-3 text-xs focus:outline-none focus:ring-1 focus:ring-[#141414]/10 bg-white"
+                    />
+                  </div>
+
+                  <button
+                    onClick={async () => {
+                      if (!sheetsTitle) return;
+                      setLoading(true);
+                      setErrorMsg('');
+                      try {
+                        const res = await createGoogleSheet(sheetsTitle);
+                        setSuccessMsg('Successfully created Google Sheet: ' + res.spreadsheetUrl);
+                        setSheetsTitle('');
+                      } catch (err: any) {
+                        setErrorMsg(err.message);
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                    disabled={loading || !sheetsTitle}
+                    className="bg-[#141414] text-white p-3 px-6 uppercase text-xs font-bold tracking-widest flex items-center gap-2 hover:opacity-90 cursor-pointer disabled:opacity-50"
+                  >
+                    <Plus size={14} /> Create Spreadsheet
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* GOOGLE TASKS MANAGER */}
+            {activeSubTab === 'tasks' && (
+              <div className="space-y-6" id="subtab-tasks">
+                <div>
+                  <h3 className="text-xl font-serif italic">Google Tasks Integration</h3>
+                  <p className="text-xs opacity-60">Manage your to-do lists directly from your Google Tasks account.</p>
+                </div>
+
+                {loading ? (
+                  <div className="text-center py-12 font-serif italic opacity-60">Loading tasks...</div>
+                ) : tasksLists.length === 0 ? (
+                  <div className="text-center py-12 opacity-60 text-xs">No task lists found.</div>
+                ) : (
+                  <div className="space-y-6">
+                    <div className="flex flex-col sm:flex-row gap-4">
+                      <select
+                        value={selectedTaskList}
+                        onChange={e => setSelectedTaskList(e.target.value)}
+                        className="border border-[#141414] p-2 text-xs uppercase tracking-widest font-bold bg-white focus:outline-none"
+                      >
+                        {tasksLists.map(list => (
+                          <option key={list.id} value={list.id}>{list.title}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="border border-[#141414] bg-white p-4 space-y-4">
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="New Task Title..."
+                          value={newTaskTitle}
+                          onChange={e => setNewTaskTitle(e.target.value)}
+                          className="flex-1 border border-[#141414] p-2 text-xs focus:outline-none"
+                        />
+                        <button
+                          onClick={async () => {
+                            if (!newTaskTitle || !selectedTaskList) return;
+                            setLoading(true);
+                            try {
+                              await createGoogleTask(selectedTaskList, newTaskTitle);
+                              const updatedTasks = await listGoogleTasks(selectedTaskList);
+                              setTasks(updatedTasks);
+                              setNewTaskTitle('');
+                            } catch (err: any) {
+                              setErrorMsg(err.message);
+                            } finally {
+                              setLoading(false);
+                            }
+                          }}
+                          disabled={loading || !newTaskTitle}
+                          className="bg-[#141414] text-white px-4 text-xs font-bold uppercase disabled:opacity-50"
+                        >
+                          Add
+                        </button>
+                      </div>
+
+                      <div className="space-y-2">
+                        {tasks.map(task => (
+                          <div key={task.id} className="flex items-center gap-3 border border-gray-100 p-2 text-sm">
+                            {task.status === 'completed' ? (
+                              <CheckCircle size={16} className="text-emerald-500" />
+                            ) : (
+                              <div className="w-4 h-4 border border-gray-300 rounded-sm" />
+                            )}
+                            <span className={task.status === 'completed' ? 'line-through opacity-50' : ''}>
+                              {task.title}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* GOOGLE CLASSROOM VIEWER */}
+            {activeSubTab === 'classroom' && (
+              <div className="space-y-6" id="subtab-classroom">
+                <div>
+                  <h3 className="text-xl font-serif italic">Google Classroom Viewer</h3>
+                  <p className="text-xs opacity-60">View your active courses and upcoming coursework directly from Google Classroom.</p>
+                </div>
+
+                {loading ? (
+                  <div className="text-center py-12 font-serif italic opacity-60">Loading courses...</div>
+                ) : classroomCourses.length === 0 ? (
+                  <div className="text-center py-12 opacity-60 text-xs">No active Google Classroom courses found.</div>
+                ) : (
+                  <div className="space-y-6">
+                    <div className="flex flex-col sm:flex-row gap-4">
+                      <select
+                        value={selectedCourse}
+                        onChange={e => setSelectedCourse(e.target.value)}
+                        className="border border-[#141414] p-2 text-xs uppercase tracking-widest font-bold bg-white focus:outline-none"
+                      >
+                        {classroomCourses.map(course => (
+                          <option key={course.id} value={course.id}>{course.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {courseWork.map(work => (
+                        <div key={work.id} className="border border-[#141414] bg-white p-4 flex flex-col justify-between">
+                          <div className="space-y-2">
+                            <h4 className="font-bold text-sm">{work.title}</h4>
+                            <p className="text-xs opacity-60 truncate">{work.description || 'No description provided'}</p>
+                          </div>
+                          
+                          <div className="mt-4 pt-3 border-t border-[#141414]/10 flex justify-between items-center">
+                            <span className="text-[10px] font-mono opacity-50">
+                              {work.dueDate ? `Due: ${work.dueDate.year}-${work.dueDate.month}-${work.dueDate.day}` : 'No Due Date'}
+                            </span>
+                            <a
+                              href={work.alternateLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="bg-[#141414] text-white p-1 px-3 text-[10px] font-bold uppercase tracking-widest hover:opacity-90 flex items-center gap-1"
+                            >
+                              Open <ExternalLink size={10} />
+                            </a>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* GOOGLE SLIDES CREATOR */}
+            {activeSubTab === 'slides' && (
+              <div className="max-w-xl space-y-6" id="subtab-slides">
+                <div>
+                  <h3 className="text-xl font-serif italic">Google Slides Creator</h3>
+                  <p className="text-xs opacity-60">Create a new presentation.</p>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs uppercase font-bold tracking-widest mb-1 text-gray-700">Slide Title</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Project Pitch"
+                      value={slidesTitle}
+                      onChange={e => setSlidesTitle(e.target.value)}
+                      className="w-full border border-[#141414] p-3 text-xs focus:outline-none focus:ring-1 focus:ring-[#141414]/10 bg-white"
+                    />
+                  </div>
+
+                  <button
+                    onClick={async () => {
+                      if (!slidesTitle) return;
+                      setLoading(true);
+                      setErrorMsg('');
+                      try {
+                        const res = await createGoogleSlide(slidesTitle);
+                        setSuccessMsg('Successfully created Google Slide: ' + res.presentationId);
+                        setSlidesTitle('');
+                      } catch (err: any) {
+                        setErrorMsg(err.message);
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                    disabled={loading || !slidesTitle}
+                    className="bg-[#141414] text-white p-3 px-6 uppercase text-xs font-bold tracking-widest flex items-center gap-2 hover:opacity-90 cursor-pointer disabled:opacity-50"
+                  >
+                    <Plus size={14} /> Create Presentation
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* GOOGLE FORMS CREATOR */}
+            {activeSubTab === 'forms' && (
+              <div className="max-w-xl space-y-6" id="subtab-forms">
+                <div>
+                  <h3 className="text-xl font-serif italic">Google Forms Creator</h3>
+                  <p className="text-xs opacity-60">Create a new form.</p>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs uppercase font-bold tracking-widest mb-1 text-gray-700">Form Title</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Feedback Survey"
+                      value={formsTitle}
+                      onChange={e => setFormsTitle(e.target.value)}
+                      className="w-full border border-[#141414] p-3 text-xs focus:outline-none focus:ring-1 focus:ring-[#141414]/10 bg-white"
+                    />
+                  </div>
+
+                  <button
+                    onClick={async () => {
+                      if (!formsTitle) return;
+                      setLoading(true);
+                      setErrorMsg('');
+                      try {
+                        const res = await createGoogleForm(formsTitle);
+                        setSuccessMsg('Successfully created Google Form: ' + res.formId);
+                        setFormsTitle('');
+                      } catch (err: any) {
+                        setErrorMsg(err.message);
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                    disabled={loading || !formsTitle}
+                    className="bg-[#141414] text-white p-3 px-6 uppercase text-xs font-bold tracking-widest flex items-center gap-2 hover:opacity-90 cursor-pointer disabled:opacity-50"
+                  >
+                    <Plus size={14} /> Create Form
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* GOOGLE PICKER / DRIVE VIEWER */}
+            {activeSubTab === 'picker' && (
+              <div className="space-y-6" id="subtab-picker">
+                <div>
+                  <h3 className="text-xl font-serif italic">Google File Picker</h3>
+                  <p className="text-xs opacity-60">Select a file from your Google Drive.</p>
+                </div>
+                
+                {loading ? (
+                  <div className="text-center py-12 font-serif italic opacity-60">Loading files...</div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4">
+                    {pickedFile && (
+                      <div className="border border-emerald-500 bg-emerald-50 p-4 mb-4">
+                        <h4 className="font-bold text-emerald-800 text-sm">Selected File</h4>
+                        <p className="text-xs text-emerald-700 mt-1">{pickedFile.name}</p>
+                        <a
+                          href={pickedFile.webViewLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-2 inline-block bg-emerald-600 text-white p-1 px-3 text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-700"
+                        >
+                          Open File
+                        </a>
+                      </div>
+                    )}
+                    
+                    <div className="border border-[#141414] bg-white">
+                      <div className="bg-gray-50 border-b border-[#141414]/20 p-2 text-[10px] font-mono uppercase tracking-widest text-gray-500 font-bold flex justify-between">
+                        <span>Select a File</span>
+                        <span>{driveFiles.length} files</span>
+                      </div>
+                      <div className="divide-y divide-[#141414]/10 max-h-96 overflow-y-auto">
+                        {driveFiles.map(file => (
+                          <div key={file.id} className="p-3 flex justify-between items-center hover:bg-gray-50 group transition-colors">
+                            <div className="flex items-center gap-3 overflow-hidden">
+                              <FolderLock size={16} className="opacity-40" />
+                              <div className="truncate">
+                                <h4 className="text-sm font-bold truncate pr-4">{file.name}</h4>
+                                <p className="text-[10px] font-mono opacity-50 truncate mt-0.5">{file.mimeType}</p>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => setPickedFile(file)}
+                              className="bg-[#141414] text-white p-1.5 px-4 text-[10px] font-bold uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              Pick
+                            </button>
+                          </div>
+                        ))}
+                        {driveFiles.length === 0 && (
+                          <div className="p-8 text-center text-xs opacity-50">No files found or refresh needed.</div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>

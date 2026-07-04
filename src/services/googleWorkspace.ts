@@ -21,6 +21,16 @@ export function getGoogleProvider() {
   provider.addScope('https://www.googleapis.com/auth/contacts.readonly');
   provider.addScope('https://www.googleapis.com/auth/calendar');
   provider.addScope('https://www.googleapis.com/auth/calendar.events');
+  provider.addScope('https://www.googleapis.com/auth/spreadsheets');
+  provider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly');
+  provider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly');
+  provider.addScope('https://www.googleapis.com/auth/tasks');
+  provider.addScope('https://www.googleapis.com/auth/presentations');
+  provider.addScope('https://www.googleapis.com/auth/presentations.readonly');
+  provider.addScope('https://www.googleapis.com/auth/forms.body');
+  provider.addScope('https://www.googleapis.com/auth/forms.body.readonly');
+  provider.addScope('https://www.googleapis.com/auth/forms.responses.readonly');
+  provider.addScope('https://www.googleapis.com/auth/drive.metadata.readonly');
   
   return provider;
 }
@@ -398,3 +408,155 @@ export async function updateGoogleCalendarEvent(eventId: string, summary: string
   return await res.json();
 }
 
+/**
+ * Google Sheets API Helpers
+ */
+export async function createGoogleSheet(title: string) {
+  const token = getGoogleAccessToken();
+  if (!token) throw new Error('Google Workspace not connected.');
+
+  const res = await fetch('https://sheets.googleapis.com/v4/spreadsheets', {
+    method: 'POST',
+    headers: { 
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      properties: { title }
+    })
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error?.message || 'Failed to create Google Sheet.');
+  }
+  return await res.json();
+}
+
+/**
+ * Google Tasks API Helpers
+ */
+export async function listGoogleTasksLists() {
+  const token = getGoogleAccessToken();
+  if (!token) throw new Error('Google Workspace not connected.');
+
+  const res = await fetch('https://tasks.googleapis.com/tasks/v1/users/@me/lists', {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error?.message || 'Failed to fetch Google Tasks lists.');
+  }
+  const data = await res.json();
+  return data.items || [];
+}
+
+export async function listGoogleTasks(taskListId: string) {
+  const token = getGoogleAccessToken();
+  if (!token) throw new Error('Google Workspace not connected.');
+
+  const res = await fetch(`https://tasks.googleapis.com/tasks/v1/lists/${taskListId}/tasks`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error?.message || 'Failed to fetch Google Tasks.');
+  }
+  const data = await res.json();
+  return data.items || [];
+}
+
+export async function createGoogleTask(taskListId: string, title: string, notes?: string) {
+  const token = getGoogleAccessToken();
+  if (!token) throw new Error('Google Workspace not connected.');
+
+  const res = await fetch(`https://tasks.googleapis.com/tasks/v1/lists/${taskListId}/tasks`, {
+    method: 'POST',
+    headers: { 
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ title, notes })
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error?.message || 'Failed to create Google Task.');
+  }
+  return await res.json();
+}
+
+/**
+ * Google Classroom API Helpers
+ */
+export async function listGoogleClassroomCourses() {
+  const token = getGoogleAccessToken();
+  if (!token) throw new Error('Google Workspace not connected.');
+
+  const res = await fetch('https://classroom.googleapis.com/v1/courses', {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error?.message || 'Failed to fetch Google Classroom courses.');
+  }
+  const data = await res.json();
+  return data.courses || [];
+}
+
+export async function listGoogleClassroomCourseWork(courseId: string) {
+  const token = getGoogleAccessToken();
+  if (!token) throw new Error('Google Workspace not connected.');
+
+  const res = await fetch(`https://classroom.googleapis.com/v1/courses/${courseId}/courseWork`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error?.message || 'Failed to fetch Google Classroom course work.');
+  }
+  const data = await res.json();
+  return data.courseWork || [];
+}
+
+/**
+ * Google Slides API Helpers
+ */
+export async function createGoogleSlide(title: string) {
+  const token = getGoogleAccessToken();
+  if (!token) throw new Error('Google Workspace not connected.');
+
+  const res = await fetch('https://slides.googleapis.com/v1/presentations', {
+    method: 'POST',
+    headers: { 
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ title })
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error?.message || 'Failed to create Google Slide presentation.');
+  }
+  return await res.json();
+}
+
+/**
+ * Google Forms API Helpers
+ */
+export async function createGoogleForm(title: string) {
+  const token = getGoogleAccessToken();
+  if (!token) throw new Error('Google Workspace not connected.');
+
+  const res = await fetch('https://forms.googleapis.com/v1/forms', {
+    method: 'POST',
+    headers: { 
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ info: { title } })
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error?.message || 'Failed to create Google Form.');
+  }
+  return await res.json();
+}

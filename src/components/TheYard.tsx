@@ -201,38 +201,63 @@ export default function TheYard() {
   const [activities, setActivities] = useState<ActivityItem[]>([]);
 
   useEffect(() => {
-    if (user?.id) {
-      const storageKey = `recent_activities_${user.id}`;
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        try {
-          setActivities(JSON.parse(saved));
-        } catch (e) {
-          console.error('Error parsing recent activities', e);
+    const fetchRealActivities = async () => {
+      if (!user?.id) return;
+      
+      try {
+        const [casesRes, threadsRes] = await Promise.all([
+          fetch('/api/legal-cases', { headers: { Authorization: `Bearer ${token}` } }),
+          fetch('/api/threads', { headers: { Authorization: `Bearer ${token}` } })
+        ]);
+        
+        const cases = await casesRes.json();
+        const allThreads = await threadsRes.json();
+        
+        const myThreads = allThreads.filter((t: any) => t.author_id === user.id);
+        
+        const realActivities: ActivityItem[] = [];
+        
+        cases.forEach((c: any) => {
+          realActivities.push({
+            id: `case-${c.id}`,
+            type: 'system',
+            title: `Case Update: ${c.case_number}`,
+            description: `Status: ${c.status || 'Active'}. Court: ${c.court || 'Unknown'}.`,
+            timestamp: c.created_at || new Date().toISOString()
+          });
+        });
+        
+        myThreads.forEach((t: any) => {
+          realActivities.push({
+            id: `thread-${t.id}`,
+            type: 'story',
+            title: `Forum Post: ${t.title}`,
+            description: `Posted in ${t.category} category.`,
+            timestamp: t.timestamp || new Date().toISOString()
+          });
+        });
+
+        const storageKey = `recent_activities_${user.id}`;
+        const saved = localStorage.getItem(storageKey);
+        let localActivities: ActivityItem[] = [];
+        if (saved) {
+          try {
+            localActivities = JSON.parse(saved);
+          } catch (e) {}
         }
-      } else {
-        // Seed some realistic high-quality initial activities
-        const initialActivities: ActivityItem[] = [
-          {
-            id: 'init-1',
-            type: 'system',
-            title: 'Remix Network Joined',
-            description: 'Established secure digital identity and joined the peer re-entry directory.',
-            timestamp: new Date(Date.now() - 3 * 3600 * 1000).toISOString() // 3 hours ago
-          },
-          {
-            id: 'init-2',
-            type: 'system',
-            title: 'Profile Initialized',
-            description: 'Synchronized alignment credentials including transitional facility and location.',
-            timestamp: new Date(Date.now() - 2.5 * 3600 * 1000).toISOString() // 2.5 hours ago
-          }
-        ];
-        setActivities(initialActivities);
-        localStorage.setItem(storageKey, JSON.stringify(initialActivities));
+
+        const combined = [...realActivities, ...localActivities]
+          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+          .slice(0, 15);
+
+        setActivities(combined);
+      } catch (err) {
+        console.error('Error fetching real activities:', err);
       }
-    }
-  }, [user?.id]);
+    };
+
+    fetchRealActivities();
+  }, [user?.id, token]);
 
   const logActivity = (type: ActivityItem['type'], title: string, description: string) => {
     if (!user?.id) return;
