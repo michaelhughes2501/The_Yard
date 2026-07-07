@@ -55,7 +55,7 @@ export default function ProgressTracker() {
   useEffect(() => {
     // 1. Fetch count of wellness journals to award streaks & credit
     try {
-      fetch('/api/wellness-journal', {
+      fetch('/api/wellness/journals', {
         headers: { Authorization: `Bearer ${token}` }
       })
       .then(res => res.json())

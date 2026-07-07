@@ -1,133 +1,14 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
-import { fileURLToPath } from "url";
 import Database from "better-sqlite3";
 import crypto from "crypto";
 import fs from "fs";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // Initialize Database
 const dbDir = path.join(process.cwd(), 'data');
 if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
 const db = new Database(path.join(dbDir, 'app.db'));
-
-try {
-  db.exec("ALTER TABLE users ADD COLUMN email TEXT UNIQUE");
-} catch (e) {}
-
-try {
-  db.exec("ALTER TABLE users ADD COLUMN is_mentor INTEGER DEFAULT 0");
-} catch (e) {}
-
-try {
-  db.exec("ALTER TABLE users ADD COLUMN hide_location INTEGER DEFAULT 0");
-} catch (e) {}
-
-try {
-  db.exec("ALTER TABLE users ADD COLUMN hide_history INTEGER DEFAULT 0");
-} catch (e) {}
-
-try {
-  db.exec("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0");
-} catch (e) {}
-
-try {
-  db.exec("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'");
-} catch (e) {}
-
-try {
-  db.exec("ALTER TABLE users ADD COLUMN is_suspended INTEGER DEFAULT 0");
-} catch (e) {}
-
-try {
-  db.exec("ALTER TABLE users ADD COLUMN avatar_url TEXT");
-} catch (e) {}
-
-try {
-  db.exec("ALTER TABLE threads ADD COLUMN is_flagged INTEGER DEFAULT 0");
-} catch (e) {}
-
-try {
-  db.exec("ALTER TABLE replies ADD COLUMN is_flagged INTEGER DEFAULT 0");
-} catch (e) {}
-
-try {
-  db.exec("ALTER TABLE kites ADD COLUMN is_read INTEGER DEFAULT 0");
-} catch (e) {}
-
-try {
-  db.exec("ALTER TABLE kites ADD COLUMN read_at DATETIME");
-} catch (e) {}
-
-try {
-  db.exec("ALTER TABLE testimonials ADD COLUMN likes_count INTEGER DEFAULT 0");
-} catch (e) {}
-
-try {
-  db.exec("ALTER TABLE users ADD COLUMN public_status TEXT");
-} catch (e) {}
-
-try {
-  db.exec("ALTER TABLE users ADD COLUMN interests TEXT");
-} catch (e) {}
-
-try {
-  db.exec("ALTER TABLE users ADD COLUMN looking_to_meet INTEGER DEFAULT 0");
-} catch (e) {}
-
-try {
-  db.exec("ALTER TABLE users ADD COLUMN wellness_reminders INTEGER DEFAULT 0");
-} catch (e) {}
-
-try {
-  db.exec("ALTER TABLE users ADD COLUMN age INTEGER");
-} catch (e) {}
-
-try {
-  db.exec("ALTER TABLE users ADD COLUMN gender TEXT");
-} catch (e) {}
-
-try {
-  db.exec("ALTER TABLE users ADD COLUMN pronouns TEXT");
-} catch (e) {}
-
-try {
-  db.exec("ALTER TABLE users ADD COLUMN looking_for TEXT");
-} catch (e) {}
-
-try {
-  db.exec("ALTER TABLE users ADD COLUMN relationship_status TEXT");
-} catch (e) {}
-
-try {
-  db.exec("ALTER TABLE users ADD COLUMN incarceration_details TEXT");
-} catch (e) {}
-
-try {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS wellness_journals (
-      id TEXT PRIMARY KEY,
-      user_id TEXT,
-      title TEXT,
-      content TEXT,
-      prompt TEXT,
-      stress_level INTEGER,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY(user_id) REFERENCES users(id)
-    )
-  `);
-} catch (e) {}
-
-try {
-  db.exec("ALTER TABLE mentorships ADD COLUMN is_anonymous INTEGER DEFAULT 0");
-} catch (e) {}
-
-try {
-  db.exec("ALTER TABLE kites ADD COLUMN is_anonymous INTEGER DEFAULT 0");
-} catch (e) {}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
@@ -344,6 +225,125 @@ db.exec(`
     FOREIGN KEY(receiver_id) REFERENCES users(id)
   );
 `);
+
+// Column/table migrations for databases created before these fields existed.
+// Must run AFTER the base CREATE TABLE statements above so `ALTER TABLE` targets exist
+// on a fresh install (previously these ran first and silently no-op'd via the empty
+// catch blocks, leaving auth/role/suspension columns missing on new databases).
+try {
+  db.exec("ALTER TABLE users ADD COLUMN email TEXT UNIQUE");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN is_mentor INTEGER DEFAULT 0");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN hide_location INTEGER DEFAULT 0");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN hide_history INTEGER DEFAULT 0");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN is_suspended INTEGER DEFAULT 0");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN avatar_url TEXT");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE threads ADD COLUMN is_flagged INTEGER DEFAULT 0");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE replies ADD COLUMN is_flagged INTEGER DEFAULT 0");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE kites ADD COLUMN is_read INTEGER DEFAULT 0");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE kites ADD COLUMN read_at DATETIME");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE testimonials ADD COLUMN likes_count INTEGER DEFAULT 0");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN public_status TEXT");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN interests TEXT");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN looking_to_meet INTEGER DEFAULT 0");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN wellness_reminders INTEGER DEFAULT 0");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN age INTEGER");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN gender TEXT");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN pronouns TEXT");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN looking_for TEXT");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN relationship_status TEXT");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN incarceration_details TEXT");
+} catch (e) {}
+
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS wellness_journals (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      title TEXT,
+      content TEXT,
+      prompt TEXT,
+      stress_level INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(user_id) REFERENCES users(id)
+    )
+  `);
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE mentorships ADD COLUMN is_anonymous INTEGER DEFAULT 0");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE kites ADD COLUMN is_anonymous INTEGER DEFAULT 0");
+} catch (e) {}
 
 async function startServer() {
   const app = express();
@@ -1365,7 +1365,7 @@ async function startServer() {
     const users = db.prepare("SELECT id, username as name, bio, location FROM users WHERE username LIKE ? OR bio LIKE ? OR location LIKE ? LIMIT 10").all(likeQ, likeQ, likeQ);
     const jobs = db.prepare("SELECT id, title, company, location FROM jobs WHERE title LIKE ? OR company LIKE ? OR description LIKE ? LIMIT 10").all(likeQ, likeQ, likeQ);
     const housing = db.prepare("SELECT id, name, type, location FROM housing WHERE name LIKE ? OR description LIKE ? OR location LIKE ? LIMIT 10").all(likeQ, likeQ, likeQ);
-    const posts = db.prepare("SELECT id, title, content, category FROM posts WHERE title LIKE ? OR content LIKE ? LIMIT 10").all(likeQ, likeQ);
+    const posts = db.prepare("SELECT id, title, content, category FROM threads WHERE title LIKE ? OR content LIKE ? LIMIT 10").all(likeQ, likeQ);
     
     res.json({ users, jobs, housing, posts });
   });
@@ -1390,7 +1390,7 @@ async function startServer() {
     const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get() as any;
     const jobCount = db.prepare("SELECT COUNT(*) as count FROM jobs").get() as any;
     const housingCount = db.prepare("SELECT COUNT(*) as count FROM housing").get() as any;
-    const postCount = db.prepare("SELECT COUNT(*) as count FROM posts").get() as any;
+    const postCount = db.prepare("SELECT COUNT(*) as count FROM threads").get() as any;
     
     res.json({
       users: userCount.count,
@@ -1559,7 +1559,8 @@ async function startServer() {
   });
 
   app.delete("/api/admin/posts/:id", requireAuth, requireRole(['moderator', 'admin', 'super_admin']), (req: any, res) => {
-    db.prepare("DELETE FROM posts WHERE id = ?").run(req.params.id);
+    db.prepare("DELETE FROM replies WHERE thread_id = ?").run(req.params.id);
+    db.prepare("DELETE FROM threads WHERE id = ?").run(req.params.id);
     res.json({ success: true });
   });
 
