@@ -20,7 +20,9 @@ import {
   CalendarDays,
   Users,
   Scale,
-  Star
+  Star,
+  Bell,
+  BellRing
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -45,6 +47,7 @@ interface Milestone {
   isCompleted: boolean;
   xpValue: number;
   completedAt?: string;
+  reminder?: 'daily' | 'weekly' | null;
 }
 
 export default function ProgressTracker() {
@@ -163,6 +166,13 @@ export default function ProgressTracker() {
   const handleDeleteMilestone = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     saveMilestones(milestones.filter(m => m.id !== id));
+  };
+
+  const handleToggleReminder = (id: string, reminderType: 'daily' | 'weekly' | null, e: React.MouseEvent) => {
+    e.stopPropagation();
+    saveMilestones(milestones.map(m => 
+      m.id === id ? { ...m, reminder: m.reminder === reminderType ? null : reminderType } : m
+    ));
   };
 
   // Recharts interactive settings & datasets for past 30 days
@@ -742,6 +752,34 @@ export default function ProgressTracker() {
                   </div>
 
                   <div className="flex items-center gap-3 shrink-0">
+                    {!m.isCompleted && (
+                      <div className="flex items-center gap-1 mr-2 border-r border-[#141414]/10 pr-3">
+                        <button
+                          onClick={(e) => handleToggleReminder(m.id, 'daily', e)}
+                          className={`p-1.5 rounded-sm transition-all text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 ${
+                            m.reminder === 'daily' 
+                              ? 'bg-amber-100 text-amber-700 border border-amber-200' 
+                              : 'text-neutral-400 hover:bg-neutral-100 hover:text-[#141414]'
+                          }`}
+                          title="Daily Reminder"
+                        >
+                          <BellRing size={12} className={m.reminder === 'daily' ? 'animate-pulse' : ''} /> 
+                          <span className="hidden sm:inline">Daily</span>
+                        </button>
+                        <button
+                          onClick={(e) => handleToggleReminder(m.id, 'weekly', e)}
+                          className={`p-1.5 rounded-sm transition-all text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 ${
+                            m.reminder === 'weekly' 
+                              ? 'bg-blue-100 text-blue-700 border border-blue-200' 
+                              : 'text-neutral-400 hover:bg-neutral-100 hover:text-[#141414]'
+                          }`}
+                          title="Weekly Reminder"
+                        >
+                          <Bell size={12} /> 
+                          <span className="hidden sm:inline">Weekly</span>
+                        </button>
+                      </div>
+                    )}
                     <span className="text-[11px] font-black font-mono tracking-tight text-[#141414] bg-neutral-100 px-2 py-0.5 rounded border border-neutral-200">
                       +{m.xpValue} XP
                     </span>
