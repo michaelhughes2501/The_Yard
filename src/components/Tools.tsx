@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { Scale, Search, Calculator, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Scale, Search, Calculator, AlertTriangle, ExternalLink, Contact, Users } from 'lucide-react';
 import { geminiService } from '../services/geminiService';
 import Markdown from 'react-markdown';
 
 export default function Tools() {
   const [dgetState, setDgetState] = useState('');
   const [dgetQuery, setDgetQuery] = useState('');
+  const [inmateId, setInmateId] = useState('');
   const [dgetResult, setDgetResult] = useState<any>(null);
   const [isDgetLoading, setIsDgetLoading] = useState(false);
 
@@ -17,7 +18,8 @@ export default function Tools() {
     if (!dgetState) return;
     setIsDgetLoading(true);
     try {
-      const response = await geminiService.searchCourtDocket(dgetState, dgetQuery);
+      const query = inmateId ? `${dgetQuery} Inmate ID: ${inmateId}` : dgetQuery;
+      const response = await geminiService.searchCourtDocket(dgetState, query);
       setDgetResult(response);
     } catch (error) {
       console.error(error);
@@ -56,7 +58,7 @@ export default function Tools() {
             <h3 className="text-3xl font-serif italic">Court Docket Search</h3>
           </div>
           <p className="text-sm opacity-60">
-            Find official court records and case information by state.
+            Find official court records and case information by state and inmate ID.
           </p>
           <div className="space-y-4">
             <select 
@@ -72,13 +74,22 @@ export default function Tools() {
               <option value="Colorado">Colorado</option>
               {/* Add more states as needed */}
             </select>
-            <input 
-              type="text" 
-              value={dgetQuery}
-              onChange={(e) => setDgetQuery(e.target.value)}
-              placeholder="Case number or name (optional)..."
-              className="w-full border border-[#141414] p-4 bg-transparent focus:outline-none"
-            />
+            <div className="grid grid-cols-2 gap-4">
+              <input 
+                type="text" 
+                value={dgetQuery}
+                onChange={(e) => setDgetQuery(e.target.value)}
+                placeholder="Case number or name..."
+                className="w-full border border-[#141414] p-4 bg-transparent focus:outline-none"
+              />
+              <input 
+                type="text" 
+                value={inmateId}
+                onChange={(e) => setInmateId(e.target.value)}
+                placeholder="Inmate ID..."
+                className="w-full border border-[#141414] p-4 bg-transparent focus:outline-none"
+              />
+            </div>
             <button 
               onClick={handleSearchDocket}
               disabled={isDgetLoading}
@@ -124,7 +135,7 @@ export default function Tools() {
           <div className="flex items-start gap-3 p-4 bg-yellow-400/10 border border-yellow-400/20 rounded-sm">
             <AlertTriangle className="text-yellow-400 shrink-0" size={20} />
             <p className="text-xs opacity-80">
-              DISCLAIMER: This tool provides rough estimates based on public data. It is NOT legal advice. Always consult with a qualified attorney.
+              DISCLAIMER: This tool provides rough educational estimates based on public data. It is NOT legal advice. Always consult with a qualified attorney regarding your specific situation.
             </p>
           </div>
           <div className="space-y-4">
@@ -150,53 +161,71 @@ export default function Tools() {
           )}
         </section>
 
-        {/* Parole Process & Check-ins */}
-        <section className="lg:col-span-2 bg-white border border-[#141414] p-8 space-y-6">
-          <div className="flex items-center gap-3">
-            <Scale className="opacity-40" />
-            <h3 className="text-3xl font-serif italic">Parole Information & Check-In Guide</h3>
-          </div>
-          <p className="text-sm opacity-60 max-w-3xl">
-            Understanding standard parole requirements, officer check-ins, and how to read your parole number.
-          </p>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-6">
-            <div className="space-y-4">
-              <h4 className="text-lg font-bold font-serif italic">1. Understanding Your Parole Number</h4>
-              <p className="text-sm leading-relaxed opacity-80">
-                Your parole number (often tied to your DOC number) is your primary identifier in the system. Memorize it. When interacting with any facility, officer, or automated system (like RMOMS), you will need to input this number correctly to verify your identity and confirm your compliance.
-              </p>
-              
-              <h4 className="text-lg font-bold font-serif italic mt-6">2. Officer Check-ins</h4>
-              <p className="text-sm leading-relaxed opacity-80">
-                Regular check-ins with your Parole Officer (PO) are mandatory. 
-              </p>
-              <ul className="list-disc pl-5 text-sm space-y-2 opacity-80">
-                <li><strong>Be Early:</strong> Arrive at least 15 minutes prior to your appointment.</li>
-                <li><strong>Documentation:</strong> Always bring proof of employment, pay stubs, address verification, and any required program completion certificates.</li>
-                <li><strong>Communication:</strong> If you are going to be late due to an emergency, call your PO immediately. Do not just fail to show up.</li>
-              </ul>
+        {/* Parole Information & Contacts */}
+        <section className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="bg-white border border-[#141414] p-8 space-y-6">
+            <div className="flex items-center gap-3 border-b border-[#141414]/10 pb-4">
+              <Users size={28} className="text-[#141414]" />
+              <div>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-gray-500 font-bold block">Eligibility & Contacts</span>
+                <h3 className="text-2xl font-serif italic font-bold">Parole Board Info</h3>
+              </div>
             </div>
+            
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <h4 className="font-bold text-sm uppercase tracking-widest text-[#141414]">Parole Eligibility</h4>
+                <p className="text-xs opacity-70 leading-relaxed">
+                  Eligibility dates are generally calculated based on the statutory requirement of your specific offense and the time served. Good time or earned time credits may adjust this date. This is highly state-dependent. Consult your case manager or the state's department of corrections portal using your inmate ID to find your specific projected release date.
+                </p>
+              </div>
 
-            <div className="space-y-4">
-              <h4 className="text-lg font-bold font-serif italic">3. Urine Analysis (UA) & RMOMS</h4>
-              <p className="text-sm leading-relaxed opacity-80">
-                Many parolees are placed on a random urinalysis schedule, often managed by third-party systems like RMOMS (Rocky Mountain Offender Management Systems) or similar local agencies.
-              </p>
-              <ul className="list-disc pl-5 text-sm space-y-2 opacity-80">
-                <li><strong>Daily Call-ins:</strong> You are usually required to call a hotline every day between specific hours (e.g., 5:00 AM - 9:00 AM) to see if your color or number is called.</li>
-                <li><strong>Testing Window:</strong> If your color/number is called, you must report to the testing facility within their business hours that same day.</li>
-                <li><strong>Dilution Warning:</strong> Do not drink excessive amounts of water before a test. A "diluted" sample is often treated as a positive test or a violation.</li>
-              </ul>
+              <div className="space-y-2">
+                <h4 className="font-bold text-sm uppercase tracking-widest text-[#141414]">Officer Contacts</h4>
+                <p className="text-xs opacity-70 leading-relaxed">
+                  Upon release, you will be assigned a Parole Officer (PO). It is critical to establish contact immediately, usually within 24-48 hours. Keep their office number, mobile number, and email saved. Always report changes in employment or address immediately.
+                </p>
+                <div className="bg-[#141414]/5 p-3 flex items-center gap-3">
+                  <Contact size={16} className="opacity-50" />
+                  <span className="text-xs font-mono font-bold opacity-70">Contact your local parole office directly for officer assignments.</span>
+                </div>
+              </div>
+            </div>
+          </div>
 
-              <div className="mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-sm">
-                <h5 className="text-xs uppercase font-bold tracking-widest text-emerald-800 mb-2">Standard Parole Requirements</h5>
-                <ul className="list-disc pl-4 text-xs text-emerald-900 space-y-1">
-                  <li>Maintain steady employment or enrollment in school.</li>
-                  <li>Do not associate with known felons.</li>
-                  <li>Do not leave the state (or sometimes county) without a travel pass from your PO.</li>
-                  <li>Abide by all curfews and electronic monitoring rules if applicable.</li>
+          {/* Parole Process & Check-ins */}
+          <div className="bg-white border border-[#141414] p-8 space-y-6">
+            <div className="flex items-center gap-3 border-b border-[#141414]/10 pb-4">
+              <Scale size={28} className="text-[#141414]" />
+              <div>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-gray-500 font-bold block">Compliance</span>
+                <h3 className="text-2xl font-serif italic font-bold">Check-In Guide</h3>
+              </div>
+            </div>
+            
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <h4 className="font-bold text-sm uppercase tracking-widest text-[#141414]">RMOMS & Urine Analysis</h4>
+                <p className="text-xs opacity-70 leading-relaxed">
+                  Many parolees are placed on a random urinalysis schedule, often managed by third-party systems like RMOMS.
+                </p>
+                <ul className="list-disc pl-5 text-xs space-y-1 opacity-70">
+                  <li><strong>Daily Call-ins:</strong> Call the hotline every day to see if your color/number is called.</li>
+                  <li><strong>Testing Window:</strong> Report to the testing facility within business hours the same day.</li>
+                  <li><strong>Dilution:</strong> Do not drink excessive water before a test; it may be flagged as a violation.</li>
                 </ul>
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="font-bold text-sm uppercase tracking-widest text-[#141414]">Standard Requirements</h4>
+                <div className="p-4 bg-emerald-50 border border-emerald-200">
+                  <ul className="list-disc pl-4 text-xs text-emerald-900 space-y-1">
+                    <li>Maintain steady employment or enrollment in school.</li>
+                    <li>Do not associate with known felons.</li>
+                    <li>Do not leave the state/county without a travel pass.</li>
+                    <li>Abide by curfews and electronic monitoring rules.</li>
+                  </ul>
+                </div>
               </div>
             </div>
           </div>
