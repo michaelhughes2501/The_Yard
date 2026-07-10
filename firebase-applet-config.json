@@ -3,7 +3,9 @@
   "appId": "1:713645444671:web:c4c23e8ecd01106591b28a",
   "apiKey": "AIzaSyCMrlkuaeWS1MfYcrk2Fhl7j_HdjQT95MU",
   "authDomain": "planning-with-ai-45ef8.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-remixtheyard-9085b0da-1a87-40ca-82e4-43c5ce3a53ae",
   "storageBucket": "planning-with-ai-45ef8.firebasestorage.app",
   "messagingSenderId": "713645444671",
-  "measurementId": ""
+  "measurementId": "",
+  "oAuthClientId": "713645444671-fr5960emae17kghvarqcfrueutv4gvts.apps.googleusercontent.com"
 }

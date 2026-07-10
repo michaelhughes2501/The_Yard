@@ -326,6 +326,20 @@ export default function Kites({ onNavigate }: { onNavigate?: (tab: any) => void 
               </div>
               
               <div className="p-4 md:p-6 border-t border-[#141414]/10 bg-white space-y-2">
+                <div className="flex gap-2 mb-2 overflow-x-auto pb-1 scrollbar-none">
+                  <button
+                    onClick={() => handleReplyChange("Hey, you hitting the yard today? Let's link up.")}
+                    className="whitespace-nowrap text-[10px] uppercase tracking-widest bg-[#141414]/5 hover:bg-[#141414]/10 px-3 py-1.5 rounded-full border border-[#141414]/10 transition-colors"
+                  >
+                    Suggest Yard Meetup
+                  </button>
+                  <button
+                    onClick={() => handleReplyChange("Check this kite, I got some news.")}
+                    className="whitespace-nowrap text-[10px] uppercase tracking-widest bg-[#141414]/5 hover:bg-[#141414]/10 px-3 py-1.5 rounded-full border border-[#141414]/10 transition-colors"
+                  >
+                    Drop a Kite
+                  </button>
+                </div>
                 <div className="relative flex gap-3 items-end">
                   <textarea 
                     rows={1}
