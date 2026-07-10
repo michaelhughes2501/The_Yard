@@ -22,7 +22,8 @@ import {
   Scale,
   Star,
   Bell,
-  BellRing
+  BellRing,
+  FileText
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -39,6 +40,12 @@ import {
   ComposedChart
 } from 'recharts';
 
+interface MilestoneNote {
+  id: string;
+  date: string;
+  text: string;
+}
+
 interface Milestone {
   id: string;
   title: string;
@@ -48,6 +55,7 @@ interface Milestone {
   xpValue: number;
   completedAt?: string;
   reminder?: 'daily' | 'weekly' | null;
+  notes?: MilestoneNote[];
 }
 
 export default function ProgressTracker() {
@@ -59,6 +67,8 @@ export default function ProgressTracker() {
   const [hasNewCompleted, setHasNewCompleted] = useState(false);
   const [customGoalText, setCustomGoalText] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [expandedMilestones, setExpandedMilestones] = useState<Set<string>>(new Set());
+  const [newNoteText, setNewNoteText] = useState<{ [key: string]: string }>({});
 
   // Load state on mount
   useEffect(() => {
@@ -172,6 +182,40 @@ export default function ProgressTracker() {
     e.stopPropagation();
     saveMilestones(milestones.map(m => 
       m.id === id ? { ...m, reminder: m.reminder === reminderType ? null : reminderType } : m
+    ));
+  };
+
+  const toggleExpanded = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const next = new Set(expandedMilestones);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    setExpandedMilestones(next);
+  };
+
+  const handleAddNote = (id: string) => {
+    const text = newNoteText[id]?.trim();
+    if (!text) return;
+
+    const newNote: MilestoneNote = {
+      id: crypto.randomUUID(),
+      date: new Date().toISOString(),
+      text
+    };
+
+    saveMilestones(milestones.map(m => 
+      m.id === id ? { ...m, notes: [...(m.notes || []), newNote] } : m
+    ));
+
+    setNewNoteText(prev => ({ ...prev, [id]: '' }));
+  };
+
+  const handleDeleteNote = (milestoneId: string, noteId: string) => {
+    saveMilestones(milestones.map(m => 
+      m.id === milestoneId ? { ...m, notes: m.notes?.filter(n => n.id !== noteId) } : m
     ));
   };
 
@@ -718,79 +762,139 @@ export default function ProgressTracker() {
               return (
                 <div 
                   key={m.id}
-                  onClick={() => handleToggleMilestone(m.id)}
-                  className={`p-4 border transition-all duration-200 cursor-pointer flex justify-between items-center gap-4 ${
+                  className={`border transition-all duration-200 ${
                     m.isCompleted 
                       ? 'bg-neutral-50 border-neutral-200 opacity-60' 
-                      : 'bg-white border-[#141414] hover:bg-neutral-100/50 hover:translate-x-1'
+                      : 'bg-white border-[#141414] hover:translate-x-1'
                   }`}
                 >
-                  <div className="flex items-center gap-3.5 min-w-0">
-                    <button 
-                      className={`w-6 h-6 border flex items-center justify-center shrink-0 transition-all ${
-                        m.isCompleted 
-                          ? 'bg-[#141414] border-[#141414] text-white' 
-                          : 'border-neutral-400 bg-white hover:border-[#141414]'
-                      }`}
-                    >
-                      {m.isCompleted && <span className="text-[10px] font-black">✓</span>}
-                    </button>
+                  <div 
+                    onClick={() => handleToggleMilestone(m.id)}
+                    className="p-4 cursor-pointer flex justify-between items-center gap-4 hover:bg-neutral-100/50"
+                  >
+                    <div className="flex items-center gap-3.5 min-w-0">
+                      <button 
+                        className={`w-6 h-6 border flex items-center justify-center shrink-0 transition-all ${
+                          m.isCompleted 
+                            ? 'bg-[#141414] border-[#141414] text-white' 
+                            : 'border-neutral-400 bg-white hover:border-[#141414]'
+                        }`}
+                      >
+                        {m.isCompleted && <span className="text-[10px] font-black">✓</span>}
+                      </button>
 
-                    <div className="space-y-0.5 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className={`inline-flex items-center gap-1 text-[8px] font-mono font-black uppercase tracking-wider border rounded-sm px-1.5 py-0.5 ${theme.bg} ${theme.border} ${theme.color}`}>
-                          <CatIcon size={10} /> {m.category}
-                        </span>
-                        <span className="text-[8px] font-mono tracking-widest opacity-40 uppercase font-bold">
-                          {m.difficulty}
-                        </span>
+                      <div className="space-y-0.5 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`inline-flex items-center gap-1 text-[8px] font-mono font-black uppercase tracking-wider border rounded-sm px-1.5 py-0.5 ${theme.bg} ${theme.border} ${theme.color}`}>
+                            <CatIcon size={10} /> {m.category}
+                          </span>
+                          <span className="text-[8px] font-mono tracking-widest opacity-40 uppercase font-bold">
+                            {m.difficulty}
+                          </span>
+                        </div>
+                        <p className={`font-bold text-sm truncate leading-tight text-neutral-900 ${m.isCompleted ? 'line-through text-neutral-400' : ''}`}>
+                          {m.title}
+                        </p>
                       </div>
-                      <p className={`font-bold text-sm truncate leading-tight text-neutral-900 ${m.isCompleted ? 'line-through text-neutral-400' : ''}`}>
-                        {m.title}
-                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-3 shrink-0">
+                      <button
+                        onClick={(e) => toggleExpanded(m.id, e)}
+                        className={`p-1.5 rounded-sm transition-all flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider ${
+                          expandedMilestones.has(m.id)
+                            ? 'bg-neutral-200 text-[#141414]'
+                            : 'text-neutral-400 hover:text-[#141414] hover:bg-neutral-100'
+                        }`}
+                        title="Notes & Journal"
+                      >
+                        <FileText size={12} />
+                        <span className="hidden sm:inline">Notes {m.notes?.length ? `(${m.notes.length})` : ''}</span>
+                      </button>
+                      
+                      {!m.isCompleted && (
+                        <div className="flex items-center gap-1 mr-2 border-r border-l border-[#141414]/10 px-3">
+                          <button
+                            onClick={(e) => handleToggleReminder(m.id, 'daily', e)}
+                            className={`p-1.5 rounded-sm transition-all text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 ${
+                              m.reminder === 'daily' 
+                                ? 'bg-amber-100 text-amber-700 border border-amber-200' 
+                                : 'text-neutral-400 hover:bg-neutral-100 hover:text-[#141414]'
+                            }`}
+                            title="Daily Reminder"
+                          >
+                            <BellRing size={12} className={m.reminder === 'daily' ? 'animate-pulse' : ''} /> 
+                            <span className="hidden sm:inline">Daily</span>
+                          </button>
+                          <button
+                            onClick={(e) => handleToggleReminder(m.id, 'weekly', e)}
+                            className={`p-1.5 rounded-sm transition-all text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 ${
+                              m.reminder === 'weekly' 
+                                ? 'bg-blue-100 text-blue-700 border border-blue-200' 
+                                : 'text-neutral-400 hover:bg-neutral-100 hover:text-[#141414]'
+                            }`}
+                            title="Weekly Reminder"
+                          >
+                            <Bell size={12} /> 
+                            <span className="hidden sm:inline">Weekly</span>
+                          </button>
+                        </div>
+                      )}
+                      <span className="text-[11px] font-black font-mono tracking-tight text-[#141414] bg-neutral-100 px-2 py-0.5 rounded border border-neutral-200">
+                        +{m.xpValue} XP
+                      </span>
+                      <button 
+                        onClick={(e) => handleDeleteMilestone(m.id, e)}
+                        className="p-1 hover:text-red-600 hover:bg-neutral-100 rounded text-neutral-400 transition-colors"
+                        title="Remove milestone card"
+                      >
+                        <Trash2 size={13} />
+                      </button>
                     </div>
                   </div>
-
-                  <div className="flex items-center gap-3 shrink-0">
-                    {!m.isCompleted && (
-                      <div className="flex items-center gap-1 mr-2 border-r border-[#141414]/10 pr-3">
+                  
+                  {expandedMilestones.has(m.id) && (
+                    <div className="border-t border-[#141414]/10 bg-neutral-50/50 p-4 space-y-4">
+                      <div className="space-y-2">
+                        {m.notes?.map(note => (
+                          <div key={note.id} className="bg-white border border-[#141414]/10 p-3 rounded-sm relative group">
+                            <p className="text-xs text-neutral-800 pr-6">{note.text}</p>
+                            <div className="flex items-center justify-between mt-2">
+                              <span className="text-[9px] font-mono text-neutral-400">
+                                {new Date(note.date).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                              </span>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleDeleteNote(m.id, note.id); }}
+                                className="text-neutral-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <Trash2 size={11} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                        {(!m.notes || m.notes.length === 0) && (
+                          <p className="text-[10px] uppercase tracking-widest font-bold text-neutral-400 text-center py-2">No notes added yet</p>
+                        )}
+                      </div>
+                      
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="Add a private note or update..."
+                          value={newNoteText[m.id] || ''}
+                          onChange={(e) => setNewNoteText(prev => ({ ...prev, [m.id]: e.target.value }))}
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleAddNote(m.id); }}
+                          className="flex-1 bg-white border border-[#141414]/20 p-2 text-xs focus:outline-none focus:border-[#141414]"
+                        />
                         <button
-                          onClick={(e) => handleToggleReminder(m.id, 'daily', e)}
-                          className={`p-1.5 rounded-sm transition-all text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 ${
-                            m.reminder === 'daily' 
-                              ? 'bg-amber-100 text-amber-700 border border-amber-200' 
-                              : 'text-neutral-400 hover:bg-neutral-100 hover:text-[#141414]'
-                          }`}
-                          title="Daily Reminder"
+                          onClick={() => handleAddNote(m.id)}
+                          className="bg-[#141414] text-white px-3 py-2 text-[10px] font-bold uppercase tracking-widest hover:opacity-90"
                         >
-                          <BellRing size={12} className={m.reminder === 'daily' ? 'animate-pulse' : ''} /> 
-                          <span className="hidden sm:inline">Daily</span>
-                        </button>
-                        <button
-                          onClick={(e) => handleToggleReminder(m.id, 'weekly', e)}
-                          className={`p-1.5 rounded-sm transition-all text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 ${
-                            m.reminder === 'weekly' 
-                              ? 'bg-blue-100 text-blue-700 border border-blue-200' 
-                              : 'text-neutral-400 hover:bg-neutral-100 hover:text-[#141414]'
-                          }`}
-                          title="Weekly Reminder"
-                        >
-                          <Bell size={12} /> 
-                          <span className="hidden sm:inline">Weekly</span>
+                          Save
                         </button>
                       </div>
-                    )}
-                    <span className="text-[11px] font-black font-mono tracking-tight text-[#141414] bg-neutral-100 px-2 py-0.5 rounded border border-neutral-200">
-                      +{m.xpValue} XP
-                    </span>
-                    <button 
-                      onClick={(e) => handleDeleteMilestone(m.id, e)}
-                      className="p-1 hover:text-red-600 hover:bg-neutral-100 rounded text-neutral-400 transition-colors"
-                      title="Remove milestone card"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
