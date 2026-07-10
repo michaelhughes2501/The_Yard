@@ -18,7 +18,9 @@ import {
   ChevronRight,
   Info,
   CalendarDays,
-  Users
+  Users,
+  Scale,
+  Star
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -476,6 +478,49 @@ export default function ProgressTracker() {
           </div>
         </div>
 
+      </div>
+
+      {/* Badges System Section */}
+      <div className="bg-white border border-[#141414] p-6 shadow-sm space-y-6">
+        <div className="flex items-center gap-2 border-b border-[#141414]/10 pb-4">
+          <Star size={18} className="text-amber-500" />
+          <h3 className="text-xs font-mono uppercase tracking-widest font-black">Unlocked Badges</h3>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
+          {[
+            { id: 'housing', name: 'Housing Secured', icon: Home, count: milestones.filter(m => m.category === 'housing' && m.isCompleted).length },
+            { id: 'career', name: 'Employment Pro', icon: Briefcase, count: milestones.filter(m => m.category === 'career' && m.isCompleted).length },
+            { id: 'legal', name: 'Legal Eagle', icon: Scale, count: milestones.filter(m => m.category === 'legal' && m.isCompleted).length },
+            { id: 'health', name: 'Mental Wellness', icon: Activity, count: milestones.filter(m => m.category === 'health' && m.isCompleted).length },
+            { id: 'social', name: 'Community Builder', icon: Users, count: milestones.filter(m => m.category === 'social' && m.isCompleted).length },
+            { id: 'streak', name: 'Dedicated', icon: Flame, count: journalCount >= 5 ? 1 : 0 },
+          ].map(badge => {
+            const BadgeIcon = badge.icon;
+            const isUnlocked = badge.count > 0;
+            return (
+              <div 
+                key={badge.id}
+                className={`flex flex-col items-center p-4 border rounded-sm transition-all duration-300 ${
+                  isUnlocked 
+                    ? 'bg-amber-50/50 border-amber-200 shadow-sm transform hover:-translate-y-1' 
+                    : 'bg-neutral-50 border-neutral-200 opacity-50 grayscale'
+                }`}
+              >
+                <div className={`p-3 rounded-full mb-3 ${isUnlocked ? 'bg-amber-100 text-amber-600' : 'bg-neutral-200 text-neutral-400'}`}>
+                  <BadgeIcon size={24} />
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-center h-8 flex items-center justify-center">
+                  {badge.name}
+                </span>
+                {isUnlocked && badge.id !== 'streak' && (
+                  <span className="text-[9px] font-mono font-bold text-amber-600 mt-1">
+                    x{badge.count}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* 30-Day Completion History Chart Card */}
