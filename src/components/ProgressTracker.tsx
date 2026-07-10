@@ -17,18 +17,22 @@ import {
   Briefcase,
   ChevronRight,
   Info,
-  CalendarDays
+  CalendarDays,
+  Users
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   BarChart,
   Bar,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Cell
+  Cell,
+  ComposedChart
 } from 'recharts';
 
 interface Milestone {
@@ -161,6 +165,7 @@ export default function ProgressTracker() {
 
   // Recharts interactive settings & datasets for past 30 days
   const [chartViewMode, setChartViewMode] = useState<'daily' | 'weekly'>('daily');
+  const [dataMode, setDataMode] = useState<'personal' | 'community'>('personal');
 
   const getChartDataset = () => {
     // Generate daily buckets for the past 30 days
@@ -190,6 +195,18 @@ export default function ProgressTracker() {
         }
       }
     });
+
+    if (dataMode === 'community') {
+      // Mock community data aggregated
+      dailyBuckets.forEach((b, idx) => {
+        const base = 420;
+        const trend = Math.floor(Math.sin(idx / 2) * 100);
+        const noise = (idx * 17) % 50;
+        b.count = base + trend + noise + (b.count * 15);
+        b.xp = b.count * 80;
+        b.milestonesList = ['Aggregated community milestones'];
+      });
+    }
 
     if (chartViewMode === 'daily') {
       return dailyBuckets;
@@ -473,28 +490,52 @@ export default function ProgressTracker() {
             <p className="text-[10px] font-mono text-neutral-500 uppercase tracking-wider">Tracks milestones checked off and effort milestones built over the past 30 days</p>
           </div>
           
-          {/* Controls to toggle Daily / Weekly */}
-          <div className="flex gap-1 bg-neutral-100 p-0.5 border border-[#141414]/10 rounded-sm">
-            <button
-              onClick={() => setChartViewMode('daily')}
-              className={`px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition-all rounded-sm cursor-pointer ${
-                chartViewMode === 'daily'
-                  ? 'bg-[#141414] text-white'
-                  : 'text-neutral-500 hover:text-[#141414]'
-              }`}
-            >
-              Daily Trend
-            </button>
-            <button
-              onClick={() => setChartViewMode('weekly')}
-              className={`px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition-all rounded-sm cursor-pointer ${
-                chartViewMode === 'weekly'
-                  ? 'bg-[#141414] text-white'
-                  : 'text-neutral-500 hover:text-[#141414]'
-              }`}
-            >
-              Weekly Blocks
-            </button>
+          {/* Controls to toggle Daily / Weekly and Personal / Community */}
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="flex gap-1 bg-neutral-100 p-0.5 border border-[#141414]/10 rounded-sm">
+              <button
+                onClick={() => setDataMode('personal')}
+                className={`px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition-all rounded-sm cursor-pointer ${
+                  dataMode === 'personal'
+                    ? 'bg-[#141414] text-white'
+                    : 'text-neutral-500 hover:text-[#141414]'
+                }`}
+              >
+                Personal
+              </button>
+              <button
+                onClick={() => setDataMode('community')}
+                className={`px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition-all rounded-sm cursor-pointer flex gap-1 items-center ${
+                  dataMode === 'community'
+                    ? 'bg-amber-500 text-white'
+                    : 'text-neutral-500 hover:text-[#141414]'
+                }`}
+              >
+                <Users size={12} /> Community
+              </button>
+            </div>
+            <div className="flex gap-1 bg-neutral-100 p-0.5 border border-[#141414]/10 rounded-sm">
+              <button
+                onClick={() => setChartViewMode('daily')}
+                className={`px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition-all rounded-sm cursor-pointer ${
+                  chartViewMode === 'daily'
+                    ? 'bg-[#141414] text-white'
+                    : 'text-neutral-500 hover:text-[#141414]'
+                }`}
+              >
+                Daily
+              </button>
+              <button
+                onClick={() => setChartViewMode('weekly')}
+                className={`px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition-all rounded-sm cursor-pointer ${
+                  chartViewMode === 'weekly'
+                    ? 'bg-[#141414] text-white'
+                    : 'text-neutral-500 hover:text-[#141414]'
+                }`}
+              >
+                Weekly
+              </button>
+            </div>
           </div>
         </div>
 
@@ -532,12 +573,12 @@ export default function ProgressTracker() {
         {/* Chart Container */}
         <div className="h-64 w-full pt-4">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart
+            <LineChart
               data={chartData}
               margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
             >
               <defs>
-                <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id="lineGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.85}/>
                   <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.25}/>
                 </linearGradient>
@@ -557,28 +598,17 @@ export default function ProgressTracker() {
               />
               <Tooltip 
                 content={<CustomTooltip />}
-                cursor={{ fill: 'rgba(20, 20, 20, 0.03)' }}
+                cursor={{ stroke: 'rgba(20, 20, 20, 0.1)', strokeWidth: 1, strokeDasharray: '3 3' }}
               />
-              <Bar 
+              <Line 
+                type="monotone"
                 dataKey="count" 
-                fill="url(#barGradient)"
-                radius={[3, 3, 0, 0]}
-                maxBarSize={chartViewMode === 'daily' ? 14 : 45}
-              >
-                {chartData.map((entry, index) => {
-                  const hasCompletions = entry.count > 0;
-                  return (
-                    <Cell 
-                      key={`cell-${index}`} 
-                      fill={hasCompletions ? '#f59e0b' : '#eee'} 
-                      stroke={hasCompletions ? '#d97706' : '#d4d4d8'}
-                      strokeWidth={hasCompletions ? 1 : 0.5}
-                      strokeDasharray={hasCompletions ? '' : '1 2'}
-                    />
-                  );
-                })}
-              </Bar>
-            </BarChart>
+                stroke="#f59e0b"
+                strokeWidth={3}
+                dot={{ r: 4, fill: '#f59e0b', stroke: '#fff', strokeWidth: 2 }}
+                activeDot={{ r: 6, fill: '#141414', stroke: '#f59e0b', strokeWidth: 2 }}
+              />
+            </LineChart>
           </ResponsiveContainer>
         </div>
       </div>
