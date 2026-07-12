@@ -73,23 +73,31 @@ export default function ProgressTracker() {
   const [expandedMilestones, setExpandedMilestones] = useState<Set<string>>(new Set());
   const [newNoteText, setNewNoteText] = useState<{ [key: string]: string }>({});
 
+  const [journals, setJournals] = useState<any[]>([]);
+  const [isCheckinModalOpen, setIsCheckinModalOpen] = useState(false);
+  const [mood, setMood] = useState(3);
+  const [accomplishments, setAccomplishments] = useState('');
+  const [isSubmittingCheckin, setIsSubmittingCheckin] = useState(false);
+
+  const fetchJournals = () => {
+    fetch('/api/wellness/journals', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (Array.isArray(data)) {
+        setJournals(data);
+        setJournalCount(data.length);
+      }
+    })
+    .catch(console.error);
+  };
+
   // Load state on mount
   useEffect(() => {
+    if (!token) return;
     // 1. Fetch count of wellness journals to award streaks & credit
-    try {
-      fetch('/api/wellness-journal', {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          setJournalCount(data.length);
-        }
-      })
-      .catch(console.error);
-    } catch (e) {
-      console.warn("Problem loading wellness journal stats", e);
-    }
+    fetchJournals();
 
     // Helper to get relative past date in YYYY-MM-DD
     const getPastDateStr = (daysAgo: number) => {
@@ -515,6 +523,36 @@ export default function ProgressTracker() {
   const xpInCurrentLevel = totalXPEarned % 250;
   const xpNeededForNext = 250 - xpInCurrentLevel;
 
+  const handleWellnessCheckin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!accomplishments.trim()) return;
+    setIsSubmittingCheckin(true);
+    try {
+      await fetch('/api/wellness/journals', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          title: "Daily Wellness Check-in",
+          content: accomplishments,
+          prompt: "Daily accomplishments and mood check-in",
+          stress_level: mood
+        })
+      });
+      setAccomplishments('');
+      setMood(3);
+      setIsCheckinModalOpen(false);
+      fetchJournals();
+    } catch(err) {
+      console.error(err);
+      alert('Failed to save check-in.');
+    } finally {
+      setIsSubmittingCheckin(false);
+    }
+  };
+
   const getRankName = (lvl: number) => {
     if (lvl <= 2) return 'Solid Ground Explorer';
     if (lvl <= 4) return 'Transitional Champion';
@@ -650,13 +688,10 @@ export default function ProgressTracker() {
               <Flame size={12} fill="currentColor" /> +{journalCount * 40} XP Earned
             </span>
           </div>
-        </div>
-
-        {/* Addictive Streaks & Wellness counter card */}
+        </div>        {/* Addictive Streaks & Wellness counter card */}
         <div className="md:col-span-1 bg-[#141414] text-[#E4E3E0] p-6 flex flex-col justify-between shadow-sm relative overflow-hidden">
           {/* Subtle decoration lines simulating map vectors */}
           <div className="absolute inset-0 opacity-5 pointer-events-none bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:12px_12px]" />
-
           <div className="space-y-3 relative z-10">
             <div className="flex items-center gap-1.5 text-amber-400">
               <Flame size={22} className="animate-pulse" fill="currentColor" />
@@ -672,11 +707,13 @@ export default function ProgressTracker() {
             </p>
           </div>
 
-          <div className="p-3 bg-white/5 border border-white/10 text-xs text-white/90 rounded-sm relative z-10 flex flex-wrap items-center justify-between gap-2 mt-4">
-            <span className="font-mono uppercase tracking-wider text-[10px]">Add entry to unlock:</span>
-            <div className="text-[10px] bg-amber-400 text-black px-2 py-0.5 font-black uppercase rounded-sm">
-              Level 2 Upgrade
-            </div>
+          <div className="mt-4 relative z-10">
+            <button
+              onClick={() => setIsCheckinModalOpen(true)}
+              className="w-full bg-amber-400 text-black hover:bg-amber-500 font-bold uppercase tracking-widest text-[10px] py-3 rounded-sm transition-colors flex items-center justify-center gap-2"
+            >
+              <Plus size={14} /> Log Daily Check-in
+            </button>
           </div>
         </div>
 
@@ -858,6 +895,48 @@ export default function ProgressTracker() {
             </LineChart>
           </ResponsiveContainer>
         </div>
+      </div>
+
+      {/* Recent Wellness Journals Section */}
+      <div className="bg-white border border-[#141414] p-6 shadow-sm space-y-6">
+        <div className="flex items-center gap-2 border-b border-[#141414]/10 pb-4">
+          <BookOpen size={18} className="text-amber-500" />
+          <h3 className="text-xs font-mono uppercase tracking-widest font-black">Recent Wellness Logs</h3>
+        </div>
+        
+        {journals.length === 0 ? (
+          <div className="bg-neutral-50 p-6 text-center border border-dashed border-[#141414]/20">
+            <p className="text-xs text-neutral-500 font-mono uppercase tracking-widest">No wellness logs yet.</p>
+            <p className="text-xs font-serif italic text-neutral-600 mt-2">Start your streak today by logging a daily check-in!</p>
+          </div>
+        ) : (
+          <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
+            {journals.map(journal => (
+              <div key={journal.id} className="bg-neutral-50 border border-[#141414]/10 p-4 relative group rounded-sm">
+                <div className="flex justify-between items-start mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">
+                      {journal.stress_level === 1 && '😖'}
+                      {journal.stress_level === 2 && '😕'}
+                      {journal.stress_level === 3 && '😐'}
+                      {journal.stress_level === 4 && '🙂'}
+                      {journal.stress_level === 5 && '🤩'}
+                    </span>
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#141414]">
+                      {journal.stress_level === 1 ? 'Very Stressed' : journal.stress_level === 5 ? 'Feeling Great' : 'Okay'}
+                    </span>
+                  </div>
+                  <span className="text-[9px] font-mono text-neutral-500 uppercase">
+                    {new Date(journal.created_at).toLocaleDateString()}
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-800 leading-relaxed pr-4 whitespace-pre-wrap">
+                  {journal.content}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Filter and active goal task grid outline */}
@@ -1087,6 +1166,81 @@ export default function ProgressTracker() {
         </p>
       </div>
 
+      <AnimatePresence>
+        {isCheckinModalOpen && (
+          <div className="fixed inset-0 bg-[#141414]/40 backdrop-blur-xs z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white border border-[#141414] w-full max-w-md p-6 relative shadow-2xl"
+            >
+              <button
+                onClick={() => setIsCheckinModalOpen(false)}
+                className="absolute right-4 top-4 text-neutral-400 hover:text-[#141414]"
+              >
+                <Trash2 size={20} />
+              </button>
+              
+              <h3 className="text-xl font-serif italic text-neutral-900 border-b border-neutral-100 pb-3 mb-4">
+                Daily Wellness Check-in
+              </h3>
+              
+              <form onSubmit={handleWellnessCheckin} className="space-y-4">
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-[#141414]">
+                    Mood / Stress Level
+                  </label>
+                  <div className="flex gap-2 justify-between">
+                    {[1, 2, 3, 4, 5].map((val) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setMood(val)}
+                        className={`w-12 h-12 flex items-center justify-center border font-bold text-lg rounded-sm transition-all ${
+                          mood === val 
+                            ? 'bg-amber-400 border-amber-500 text-black scale-110 shadow-sm'
+                            : 'bg-white border-[#141414]/20 text-neutral-400 hover:border-amber-300'
+                        }`}
+                      >
+                        {val === 1 && '😖'}
+                        {val === 2 && '😕'}
+                        {val === 3 && '😐'}
+                        {val === 4 && '🙂'}
+                        {val === 5 && '🤩'}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[9px] text-center text-neutral-500 font-mono uppercase tracking-wider">
+                    {mood === 1 ? 'Very Stressed' : mood === 5 ? 'Feeling Great' : 'Okay'}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-[#141414]">
+                    Daily Accomplishments
+                  </label>
+                  <textarea
+                    value={accomplishments}
+                    onChange={(e) => setAccomplishments(e.target.value)}
+                    required
+                    placeholder="What did you achieve today? (Big or small)"
+                    className="w-full border border-[#141414] p-3 text-xs min-h-[100px] bg-neutral-50 focus:bg-white transition-colors"
+                  />
+                </div>
+                
+                <button
+                  type="submit"
+                  disabled={isSubmittingCheckin || !accomplishments.trim()}
+                  className="w-full bg-[#141414] text-white p-3 text-xs font-bold uppercase tracking-widest flex justify-center items-center gap-2 hover:bg-neutral-800 disabled:opacity-50 transition-colors rounded-sm mt-4"
+                >
+                  {isSubmittingCheckin ? 'Saving...' : 'Submit Log'}
+                </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
