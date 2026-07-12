@@ -23,7 +23,8 @@ import {
   Star,
   Bell,
   BellRing,
-  FileText
+  FileText,
+  Mail
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -34,11 +35,13 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
+  Tooltip as RechartsTooltip,
   ResponsiveContainer,
   Cell,
   ComposedChart
 } from 'recharts';
+import { auth } from '../firebase';
+import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 
 interface MilestoneNote {
   id: string;
@@ -222,6 +225,151 @@ export default function ProgressTracker() {
   // Recharts interactive settings & datasets for past 30 days
   const [chartViewMode, setChartViewMode] = useState<'daily' | 'weekly'>('daily');
   const [dataMode, setDataMode] = useState<'personal' | 'community'>('personal');
+  const [exportingToDocs, setExportingToDocs] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
+
+  const handleSendEmail = async () => {
+    setSendingEmail(true);
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.addScope('https://www.googleapis.com/auth/gmail.send');
+      
+      const result = await signInWithPopup(auth, provider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      const accessToken = credential?.accessToken;
+      
+      if (!accessToken) throw new Error("Could not get access token");
+
+      const userEmail = result.user.email;
+
+      // format content
+      const completed = milestones.filter(m => m.isCompleted);
+      const pending = milestones.filter(m => !m.isCompleted);
+
+      let textContent = "My Reentry Progress Plan\n\n";
+      textContent += "PENDING GOALS:\n";
+      pending.forEach(m => {
+        textContent += `- [ ] ${m.title} (${m.category})\n`;
+        if (m.notes?.length) {
+          m.notes.forEach(n => {
+            textContent += `    Note: ${n.text} (${new Date(n.date).toLocaleDateString()})\n`;
+          });
+        }
+      });
+      textContent += "\nCOMPLETED GOALS:\n";
+      completed.forEach(m => {
+        textContent += `- [x] ${m.title} (${m.category})\n`;
+      });
+
+      const messageParts = [
+        `To: ${userEmail}`,
+        `Subject: My Reentry Plan Progress`,
+        `Content-Type: text/plain; charset=utf-8`,
+        '',
+        textContent
+      ];
+      
+      const message = messageParts.join('\n');
+      const encodedMessage = btoa(unescape(encodeURIComponent(message)))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+
+      const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+        method: 'POST',
+        headers: {
+           Authorization: `Bearer ${accessToken}`,
+           'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          raw: encodedMessage
+        })
+      });
+
+      if (!res.ok) throw new Error("Failed to send email");
+
+      alert('Successfully sent your plan to your email!');
+    } catch(err) {
+      console.error(err);
+      alert('Failed to send email. Please try again.');
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
+  const handleExportToDocs = async () => {
+    setExportingToDocs(true);
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.addScope('https://www.googleapis.com/auth/documents');
+      provider.addScope('https://www.googleapis.com/auth/drive.file');
+      
+      const result = await signInWithPopup(auth, provider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      const accessToken = credential?.accessToken;
+      
+      if (!accessToken) throw new Error("Could not get access token");
+
+      // create document
+      const docRes = await fetch('https://docs.googleapis.com/v1/documents', {
+        method: 'POST',
+        headers: {
+           Authorization: `Bearer ${accessToken}`,
+           'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ title: `My Reentry Plan - ${new Date().toLocaleDateString()}` })
+      });
+      const docData = await docRes.json();
+      const documentId = docData.documentId;
+
+      // format content
+      const completed = milestones.filter(m => m.isCompleted);
+      const pending = milestones.filter(m => !m.isCompleted);
+
+      let textContent = "My Reentry Progress Plan\n\n";
+      textContent += "PENDING GOALS:\n";
+      pending.forEach(m => {
+        textContent += `- [ ] ${m.title} (${m.category})\n`;
+        if (m.notes?.length) {
+          m.notes.forEach(n => {
+            textContent += `    Note: ${n.text} (${new Date(n.date).toLocaleDateString()})\n`;
+          });
+        }
+      });
+      textContent += "\nCOMPLETED GOALS:\n";
+      completed.forEach(m => {
+        textContent += `- [x] ${m.title} (${m.category})\n`;
+      });
+
+      // insert text
+      await fetch(`https://docs.googleapis.com/v1/documents/${documentId}:batchUpdate`, {
+        method: 'POST',
+        headers: {
+           Authorization: `Bearer ${accessToken}`,
+           'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          requests: [
+            {
+              insertText: {
+                location: {
+                  index: 1,
+                },
+                text: textContent
+              }
+            }
+          ]
+        })
+      });
+
+      alert(`Successfully exported your plan to Google Docs! Document ID: ${documentId}`);
+    } catch(err) {
+      console.error(err);
+      alert('Failed to export to Google Docs. Please try again.');
+    } finally {
+      setExportingToDocs(false);
+    }
+  };
 
   const getChartDataset = () => {
     // Generate daily buckets for the past 30 days
@@ -695,7 +843,7 @@ export default function ProgressTracker() {
                 axisLine={{ stroke: '#141414', strokeOpacity: 0.15 }}
                 tickLine={false}
               />
-              <Tooltip 
+              <RechartsTooltip 
                 content={<CustomTooltip />}
                 cursor={{ stroke: 'rgba(20, 20, 20, 0.1)', strokeWidth: 1, strokeDasharray: '3 3' }}
               />
@@ -749,6 +897,25 @@ export default function ProgressTracker() {
               Add Goal
             </button>
           </form>
+        </div>
+
+        <div className="flex justify-end gap-2 pb-4">
+          <button
+            onClick={handleSendEmail}
+            disabled={sendingEmail}
+            className="flex items-center gap-2 bg-neutral-800 text-white px-4 py-2 text-[10px] font-bold uppercase tracking-widest hover:bg-neutral-900 transition-all rounded-sm disabled:opacity-50"
+          >
+            <Mail size={14} />
+            {sendingEmail ? 'Sending...' : 'Email Plan'}
+          </button>
+          <button
+            onClick={handleExportToDocs}
+            disabled={exportingToDocs}
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 text-[10px] font-bold uppercase tracking-widest hover:bg-blue-700 transition-all rounded-sm disabled:opacity-50"
+          >
+            <FileText size={14} />
+            {exportingToDocs ? 'Exporting...' : 'Export Plan to Google Docs'}
+          </button>
         </div>
 
         {/* Milestone checklist rows */}
