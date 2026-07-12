@@ -164,7 +164,7 @@ export default function Kites({ onNavigate }: { onNavigate?: (tab: any) => void 
       <header className="space-y-4">
         <h2 className="text-6xl font-serif italic tracking-tighter">Kites</h2>
         <p className="text-xl opacity-60 max-w-2xl">
-          Direct messages with your brothers. Keep in touch, share advice, and stay strong.
+          Send kites to your brothers. Keep in touch, share advice, and stay strong.
         </p>
       </header>
 
