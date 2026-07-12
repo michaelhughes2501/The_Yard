@@ -79,6 +79,54 @@ export default function ProgressTracker() {
   const [accomplishments, setAccomplishments] = useState('');
   const [isSubmittingCheckin, setIsSubmittingCheckin] = useState(false);
 
+  // Reminder state
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderTime, setReminderTime] = useState('09:00');
+  const [isUpdatingReminder, setIsUpdatingReminder] = useState(false);
+
+  const toggleReminder = async () => {
+    setIsUpdatingReminder(true);
+    const newEnabled = !reminderEnabled;
+    setReminderEnabled(newEnabled);
+    try {
+      await fetch('/api/users/profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          wellness_reminders: newEnabled,
+          wellness_reminder_time: reminderTime
+        })
+      });
+    } catch (e) {
+      console.error(e);
+      setReminderEnabled(!newEnabled); // revert
+    } finally {
+      setIsUpdatingReminder(false);
+    }
+  };
+
+  const updateReminderTime = async (newTime: string) => {
+    setReminderTime(newTime);
+    try {
+      await fetch('/api/users/profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          wellness_reminders: reminderEnabled,
+          wellness_reminder_time: newTime
+        })
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const fetchJournals = () => {
     fetch('/api/wellness/journals', {
       headers: { Authorization: `Bearer ${token}` }
@@ -96,6 +144,19 @@ export default function ProgressTracker() {
   // Load state on mount
   useEffect(() => {
     if (!token) return;
+
+    fetch('/api/users/profile', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data) {
+        setReminderEnabled(data.wellness_reminders);
+        setReminderTime(data.wellness_reminder_time || '09:00');
+      }
+    })
+    .catch(console.error);
+
     // 1. Fetch count of wellness journals to award streaks & credit
     fetchJournals();
 
@@ -707,13 +768,40 @@ export default function ProgressTracker() {
             </p>
           </div>
 
-          <div className="mt-4 relative z-10">
+          <div className="mt-4 relative z-10 space-y-3">
             <button
               onClick={() => setIsCheckinModalOpen(true)}
               className="w-full bg-amber-400 text-black hover:bg-amber-500 font-bold uppercase tracking-widest text-[10px] py-3 rounded-sm transition-colors flex items-center justify-center gap-2"
             >
               <Plus size={14} /> Log Daily Check-in
             </button>
+            <div className="flex flex-col gap-2 pt-2 border-t border-white/10">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-mono uppercase tracking-widest">Daily Reminders</span>
+                <button
+                  onClick={toggleReminder}
+                  disabled={isUpdatingReminder}
+                  className={`w-10 h-5 rounded-full flex items-center p-0.5 transition-colors cursor-pointer ${
+                    reminderEnabled ? 'bg-amber-400' : 'bg-neutral-600'
+                  } ${isUpdatingReminder ? 'opacity-50' : ''}`}
+                >
+                  <div className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform ${
+                    reminderEnabled ? 'translate-x-5' : 'translate-x-0'
+                  }`} />
+                </button>
+              </div>
+              {reminderEnabled && (
+                <div className="flex items-center justify-between mt-1">
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-400">Reminder Time</span>
+                  <input
+                    type="time"
+                    value={reminderTime}
+                    onChange={(e) => updateReminderTime(e.target.value)}
+                    className="bg-[#1a1a1a] text-white border border-white/20 rounded-sm px-2 py-1 text-xs font-mono outline-none focus:border-amber-400 transition-colors"
+                  />
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
