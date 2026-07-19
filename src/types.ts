@@ -15,6 +15,7 @@ export interface User {
   interests?: string;
   looking_to_meet?: boolean; // Signal availability to meet ("Yard" status)
   wellness_reminders?: boolean;
+  wellness_reminder_time?: string;
   age?: number;
   gender?: string;
   pronouns?: string;

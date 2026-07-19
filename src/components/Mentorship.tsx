@@ -789,7 +789,7 @@ export default function MentorshipTab() {
                   </p>
                   
                   <label className="block text-xs uppercase tracking-widest font-bold mb-2">
-                    Personal Message
+                    Personal Kite
                   </label>
                   <textarea
                     required
@@ -799,7 +799,7 @@ export default function MentorshipTab() {
                     className="w-full border border-[#141414] p-3 min-h-[120px] focus:outline-none focus:ring-2 focus:ring-[#141414]/10 resize-y font-medium text-sm"
                   />
                   <p className="text-[10px] uppercase tracking-widest opacity-50 mt-1">
-                    This will be sent as a message (Kite) to the mentor.
+                    This will be sent as a kite to the mentor.
                   </p>
 
                   {/* Anonymity settings toggle */}

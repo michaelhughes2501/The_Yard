@@ -17,19 +17,37 @@ import {
   Briefcase,
   ChevronRight,
   Info,
-  CalendarDays
+  CalendarDays,
+  Users,
+  Scale,
+  Star,
+  Bell,
+  BellRing,
+  FileText,
+  Mail
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   BarChart,
   Bar,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
+  Tooltip as RechartsTooltip,
   ResponsiveContainer,
-  Cell
+  Cell,
+  ComposedChart
 } from 'recharts';
+import { auth } from '../firebase';
+import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+
+interface MilestoneNote {
+  id: string;
+  date: string;
+  text: string;
+}
 
 interface Milestone {
   id: string;
@@ -39,6 +57,8 @@ interface Milestone {
   isCompleted: boolean;
   xpValue: number;
   completedAt?: string;
+  reminder?: 'daily' | 'weekly' | null;
+  notes?: MilestoneNote[];
 }
 
 export default function ProgressTracker() {
@@ -50,24 +70,95 @@ export default function ProgressTracker() {
   const [hasNewCompleted, setHasNewCompleted] = useState(false);
   const [customGoalText, setCustomGoalText] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [expandedMilestones, setExpandedMilestones] = useState<Set<string>>(new Set());
+  const [newNoteText, setNewNoteText] = useState<{ [key: string]: string }>({});
+
+  const [journals, setJournals] = useState<any[]>([]);
+  const [isCheckinModalOpen, setIsCheckinModalOpen] = useState(false);
+  const [mood, setMood] = useState(3);
+  const [accomplishments, setAccomplishments] = useState('');
+  const [isSubmittingCheckin, setIsSubmittingCheckin] = useState(false);
+
+  // Reminder state
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderTime, setReminderTime] = useState('09:00');
+  const [isUpdatingReminder, setIsUpdatingReminder] = useState(false);
+
+  const toggleReminder = async () => {
+    setIsUpdatingReminder(true);
+    const newEnabled = !reminderEnabled;
+    setReminderEnabled(newEnabled);
+    try {
+      await fetch('/api/users/profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          wellness_reminders: newEnabled,
+          wellness_reminder_time: reminderTime
+        })
+      });
+    } catch (e) {
+      console.error(e);
+      setReminderEnabled(!newEnabled); // revert
+    } finally {
+      setIsUpdatingReminder(false);
+    }
+  };
+
+  const updateReminderTime = async (newTime: string) => {
+    setReminderTime(newTime);
+    try {
+      await fetch('/api/users/profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          wellness_reminders: reminderEnabled,
+          wellness_reminder_time: newTime
+        })
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const fetchJournals = () => {
+    fetch('/api/wellness/journals', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (Array.isArray(data)) {
+        setJournals(data);
+        setJournalCount(data.length);
+      }
+    })
+    .catch(console.error);
+  };
 
   // Load state on mount
   useEffect(() => {
+    if (!token) return;
+
+    fetch('/api/users/profile', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data) {
+        setReminderEnabled(data.wellness_reminders);
+        setReminderTime(data.wellness_reminder_time || '09:00');
+      }
+    })
+    .catch(console.error);
+
     // 1. Fetch count of wellness journals to award streaks & credit
-    try {
-      fetch('/api/wellness-journal', {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          setJournalCount(data.length);
-        }
-      })
-      .catch(console.error);
-    } catch (e) {
-      console.warn("Problem loading wellness journal stats", e);
-    }
+    fetchJournals();
 
     // Helper to get relative past date in YYYY-MM-DD
     const getPastDateStr = (daysAgo: number) => {
@@ -159,8 +250,195 @@ export default function ProgressTracker() {
     saveMilestones(milestones.filter(m => m.id !== id));
   };
 
+  const handleToggleReminder = (id: string, reminderType: 'daily' | 'weekly' | null, e: React.MouseEvent) => {
+    e.stopPropagation();
+    saveMilestones(milestones.map(m => 
+      m.id === id ? { ...m, reminder: m.reminder === reminderType ? null : reminderType } : m
+    ));
+  };
+
+  const toggleExpanded = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const next = new Set(expandedMilestones);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    setExpandedMilestones(next);
+  };
+
+  const handleAddNote = (id: string) => {
+    const text = newNoteText[id]?.trim();
+    if (!text) return;
+
+    const newNote: MilestoneNote = {
+      id: crypto.randomUUID(),
+      date: new Date().toISOString(),
+      text
+    };
+
+    saveMilestones(milestones.map(m => 
+      m.id === id ? { ...m, notes: [...(m.notes || []), newNote] } : m
+    ));
+
+    setNewNoteText(prev => ({ ...prev, [id]: '' }));
+  };
+
+  const handleDeleteNote = (milestoneId: string, noteId: string) => {
+    saveMilestones(milestones.map(m => 
+      m.id === milestoneId ? { ...m, notes: m.notes?.filter(n => n.id !== noteId) } : m
+    ));
+  };
+
   // Recharts interactive settings & datasets for past 30 days
   const [chartViewMode, setChartViewMode] = useState<'daily' | 'weekly'>('daily');
+  const [dataMode, setDataMode] = useState<'personal' | 'community'>('personal');
+  const [exportingToDocs, setExportingToDocs] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
+
+  const handleSendEmail = async () => {
+    setSendingEmail(true);
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.addScope('https://www.googleapis.com/auth/gmail.send');
+      
+      const result = await signInWithPopup(auth, provider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      const accessToken = credential?.accessToken;
+      
+      if (!accessToken) throw new Error("Could not get access token");
+
+      const userEmail = result.user.email;
+
+      // format content
+      const completed = milestones.filter(m => m.isCompleted);
+      const pending = milestones.filter(m => !m.isCompleted);
+
+      let textContent = "My Reentry Progress Plan\n\n";
+      textContent += "PENDING GOALS:\n";
+      pending.forEach(m => {
+        textContent += `- [ ] ${m.title} (${m.category})\n`;
+        if (m.notes?.length) {
+          m.notes.forEach(n => {
+            textContent += `    Note: ${n.text} (${new Date(n.date).toLocaleDateString()})\n`;
+          });
+        }
+      });
+      textContent += "\nCOMPLETED GOALS:\n";
+      completed.forEach(m => {
+        textContent += `- [x] ${m.title} (${m.category})\n`;
+      });
+
+      const messageParts = [
+        `To: ${userEmail}`,
+        `Subject: My Reentry Plan Progress`,
+        `Content-Type: text/plain; charset=utf-8`,
+        '',
+        textContent
+      ];
+      
+      const message = messageParts.join('\n');
+      const encodedMessage = btoa(unescape(encodeURIComponent(message)))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+
+      const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+        method: 'POST',
+        headers: {
+           Authorization: `Bearer ${accessToken}`,
+           'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          raw: encodedMessage
+        })
+      });
+
+      if (!res.ok) throw new Error("Failed to send email");
+
+      alert('Successfully sent your plan to your email!');
+    } catch(err) {
+      console.error(err);
+      alert('Failed to send email. Please try again.');
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
+  const handleExportToDocs = async () => {
+    setExportingToDocs(true);
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.addScope('https://www.googleapis.com/auth/documents');
+      provider.addScope('https://www.googleapis.com/auth/drive.file');
+      
+      const result = await signInWithPopup(auth, provider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      const accessToken = credential?.accessToken;
+      
+      if (!accessToken) throw new Error("Could not get access token");
+
+      // create document
+      const docRes = await fetch('https://docs.googleapis.com/v1/documents', {
+        method: 'POST',
+        headers: {
+           Authorization: `Bearer ${accessToken}`,
+           'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ title: `My Reentry Plan - ${new Date().toLocaleDateString()}` })
+      });
+      const docData = await docRes.json();
+      const documentId = docData.documentId;
+
+      // format content
+      const completed = milestones.filter(m => m.isCompleted);
+      const pending = milestones.filter(m => !m.isCompleted);
+
+      let textContent = "My Reentry Progress Plan\n\n";
+      textContent += "PENDING GOALS:\n";
+      pending.forEach(m => {
+        textContent += `- [ ] ${m.title} (${m.category})\n`;
+        if (m.notes?.length) {
+          m.notes.forEach(n => {
+            textContent += `    Note: ${n.text} (${new Date(n.date).toLocaleDateString()})\n`;
+          });
+        }
+      });
+      textContent += "\nCOMPLETED GOALS:\n";
+      completed.forEach(m => {
+        textContent += `- [x] ${m.title} (${m.category})\n`;
+      });
+
+      // insert text
+      await fetch(`https://docs.googleapis.com/v1/documents/${documentId}:batchUpdate`, {
+        method: 'POST',
+        headers: {
+           Authorization: `Bearer ${accessToken}`,
+           'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          requests: [
+            {
+              insertText: {
+                location: {
+                  index: 1,
+                },
+                text: textContent
+              }
+            }
+          ]
+        })
+      });
+
+      alert(`Successfully exported your plan to Google Docs! Document ID: ${documentId}`);
+    } catch(err) {
+      console.error(err);
+      alert('Failed to export to Google Docs. Please try again.');
+    } finally {
+      setExportingToDocs(false);
+    }
+  };
 
   const getChartDataset = () => {
     // Generate daily buckets for the past 30 days
@@ -190,6 +468,18 @@ export default function ProgressTracker() {
         }
       }
     });
+
+    if (dataMode === 'community') {
+      // Mock community data aggregated
+      dailyBuckets.forEach((b, idx) => {
+        const base = 420;
+        const trend = Math.floor(Math.sin(idx / 2) * 100);
+        const noise = (idx * 17) % 50;
+        b.count = base + trend + noise + (b.count * 15);
+        b.xp = b.count * 80;
+        b.milestonesList = ['Aggregated community milestones'];
+      });
+    }
 
     if (chartViewMode === 'daily') {
       return dailyBuckets;
@@ -293,6 +583,36 @@ export default function ProgressTracker() {
   const calculatedLevel = Math.floor(totalXPEarned / 250) + 1;
   const xpInCurrentLevel = totalXPEarned % 250;
   const xpNeededForNext = 250 - xpInCurrentLevel;
+
+  const handleWellnessCheckin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!accomplishments.trim()) return;
+    setIsSubmittingCheckin(true);
+    try {
+      await fetch('/api/wellness/journals', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          title: "Daily Wellness Check-in",
+          content: accomplishments,
+          prompt: "Daily accomplishments and mood check-in",
+          stress_level: mood
+        })
+      });
+      setAccomplishments('');
+      setMood(3);
+      setIsCheckinModalOpen(false);
+      fetchJournals();
+    } catch(err) {
+      console.error(err);
+      alert('Failed to save check-in.');
+    } finally {
+      setIsSubmittingCheckin(false);
+    }
+  };
 
   const getRankName = (lvl: number) => {
     if (lvl <= 2) return 'Solid Ground Explorer';
@@ -429,13 +749,10 @@ export default function ProgressTracker() {
               <Flame size={12} fill="currentColor" /> +{journalCount * 40} XP Earned
             </span>
           </div>
-        </div>
-
-        {/* Addictive Streaks & Wellness counter card */}
+        </div>        {/* Addictive Streaks & Wellness counter card */}
         <div className="md:col-span-1 bg-[#141414] text-[#E4E3E0] p-6 flex flex-col justify-between shadow-sm relative overflow-hidden">
           {/* Subtle decoration lines simulating map vectors */}
           <div className="absolute inset-0 opacity-5 pointer-events-none bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:12px_12px]" />
-
           <div className="space-y-3 relative z-10">
             <div className="flex items-center gap-1.5 text-amber-400">
               <Flame size={22} className="animate-pulse" fill="currentColor" />
@@ -451,14 +768,86 @@ export default function ProgressTracker() {
             </p>
           </div>
 
-          <div className="p-3 bg-white/5 border border-white/10 text-xs text-white/90 rounded-sm relative z-10 flex flex-wrap items-center justify-between gap-2 mt-4">
-            <span className="font-mono uppercase tracking-wider text-[10px]">Add entry to unlock:</span>
-            <div className="text-[10px] bg-amber-400 text-black px-2 py-0.5 font-black uppercase rounded-sm">
-              Level 2 Upgrade
+          <div className="mt-4 relative z-10 space-y-3">
+            <button
+              onClick={() => setIsCheckinModalOpen(true)}
+              className="w-full bg-amber-400 text-black hover:bg-amber-500 font-bold uppercase tracking-widest text-[10px] py-3 rounded-sm transition-colors flex items-center justify-center gap-2"
+            >
+              <Plus size={14} /> Log Daily Check-in
+            </button>
+            <div className="flex flex-col gap-2 pt-2 border-t border-white/10">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-mono uppercase tracking-widest">Daily Reminders</span>
+                <button
+                  onClick={toggleReminder}
+                  disabled={isUpdatingReminder}
+                  className={`w-10 h-5 rounded-full flex items-center p-0.5 transition-colors cursor-pointer ${
+                    reminderEnabled ? 'bg-amber-400' : 'bg-neutral-600'
+                  } ${isUpdatingReminder ? 'opacity-50' : ''}`}
+                >
+                  <div className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform ${
+                    reminderEnabled ? 'translate-x-5' : 'translate-x-0'
+                  }`} />
+                </button>
+              </div>
+              {reminderEnabled && (
+                <div className="flex items-center justify-between mt-1">
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-400">Reminder Time</span>
+                  <input
+                    type="time"
+                    value={reminderTime}
+                    onChange={(e) => updateReminderTime(e.target.value)}
+                    className="bg-[#1a1a1a] text-white border border-white/20 rounded-sm px-2 py-1 text-xs font-mono outline-none focus:border-amber-400 transition-colors"
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>
 
+      </div>
+
+      {/* Badges System Section */}
+      <div className="bg-white border border-[#141414] p-6 shadow-sm space-y-6">
+        <div className="flex items-center gap-2 border-b border-[#141414]/10 pb-4">
+          <Star size={18} className="text-amber-500" />
+          <h3 className="text-xs font-mono uppercase tracking-widest font-black">Unlocked Badges</h3>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
+          {[
+            { id: 'housing', name: 'Housing Secured', icon: Home, count: milestones.filter(m => m.category === 'housing' && m.isCompleted).length },
+            { id: 'career', name: 'Employment Pro', icon: Briefcase, count: milestones.filter(m => m.category === 'career' && m.isCompleted).length },
+            { id: 'legal', name: 'Legal Eagle', icon: Scale, count: milestones.filter(m => m.category === 'legal' && m.isCompleted).length },
+            { id: 'health', name: 'Mental Wellness', icon: Activity, count: milestones.filter(m => m.category === 'health' && m.isCompleted).length },
+            { id: 'social', name: 'Community Builder', icon: Users, count: milestones.filter(m => m.category === 'social' && m.isCompleted).length },
+            { id: 'streak', name: 'Dedicated', icon: Flame, count: journalCount >= 5 ? 1 : 0 },
+          ].map(badge => {
+            const BadgeIcon = badge.icon;
+            const isUnlocked = badge.count > 0;
+            return (
+              <div 
+                key={badge.id}
+                className={`flex flex-col items-center p-4 border rounded-sm transition-all duration-300 ${
+                  isUnlocked 
+                    ? 'bg-amber-50/50 border-amber-200 shadow-sm transform hover:-translate-y-1' 
+                    : 'bg-neutral-50 border-neutral-200 opacity-50 grayscale'
+                }`}
+              >
+                <div className={`p-3 rounded-full mb-3 ${isUnlocked ? 'bg-amber-100 text-amber-600' : 'bg-neutral-200 text-neutral-400'}`}>
+                  <BadgeIcon size={24} />
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-center h-8 flex items-center justify-center">
+                  {badge.name}
+                </span>
+                {isUnlocked && badge.id !== 'streak' && (
+                  <span className="text-[9px] font-mono font-bold text-amber-600 mt-1">
+                    x{badge.count}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* 30-Day Completion History Chart Card */}
@@ -473,28 +862,52 @@ export default function ProgressTracker() {
             <p className="text-[10px] font-mono text-neutral-500 uppercase tracking-wider">Tracks milestones checked off and effort milestones built over the past 30 days</p>
           </div>
           
-          {/* Controls to toggle Daily / Weekly */}
-          <div className="flex gap-1 bg-neutral-100 p-0.5 border border-[#141414]/10 rounded-sm">
-            <button
-              onClick={() => setChartViewMode('daily')}
-              className={`px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition-all rounded-sm cursor-pointer ${
-                chartViewMode === 'daily'
-                  ? 'bg-[#141414] text-white'
-                  : 'text-neutral-500 hover:text-[#141414]'
-              }`}
-            >
-              Daily Trend
-            </button>
-            <button
-              onClick={() => setChartViewMode('weekly')}
-              className={`px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition-all rounded-sm cursor-pointer ${
-                chartViewMode === 'weekly'
-                  ? 'bg-[#141414] text-white'
-                  : 'text-neutral-500 hover:text-[#141414]'
-              }`}
-            >
-              Weekly Blocks
-            </button>
+          {/* Controls to toggle Daily / Weekly and Personal / Community */}
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="flex gap-1 bg-neutral-100 p-0.5 border border-[#141414]/10 rounded-sm">
+              <button
+                onClick={() => setDataMode('personal')}
+                className={`px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition-all rounded-sm cursor-pointer ${
+                  dataMode === 'personal'
+                    ? 'bg-[#141414] text-white'
+                    : 'text-neutral-500 hover:text-[#141414]'
+                }`}
+              >
+                Personal
+              </button>
+              <button
+                onClick={() => setDataMode('community')}
+                className={`px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition-all rounded-sm cursor-pointer flex gap-1 items-center ${
+                  dataMode === 'community'
+                    ? 'bg-amber-500 text-white'
+                    : 'text-neutral-500 hover:text-[#141414]'
+                }`}
+              >
+                <Users size={12} /> Community
+              </button>
+            </div>
+            <div className="flex gap-1 bg-neutral-100 p-0.5 border border-[#141414]/10 rounded-sm">
+              <button
+                onClick={() => setChartViewMode('daily')}
+                className={`px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition-all rounded-sm cursor-pointer ${
+                  chartViewMode === 'daily'
+                    ? 'bg-[#141414] text-white'
+                    : 'text-neutral-500 hover:text-[#141414]'
+                }`}
+              >
+                Daily
+              </button>
+              <button
+                onClick={() => setChartViewMode('weekly')}
+                className={`px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition-all rounded-sm cursor-pointer ${
+                  chartViewMode === 'weekly'
+                    ? 'bg-[#141414] text-white'
+                    : 'text-neutral-500 hover:text-[#141414]'
+                }`}
+              >
+                Weekly
+              </button>
+            </div>
           </div>
         </div>
 
@@ -532,12 +945,12 @@ export default function ProgressTracker() {
         {/* Chart Container */}
         <div className="h-64 w-full pt-4">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart
+            <LineChart
               data={chartData}
               margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
             >
               <defs>
-                <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id="lineGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.85}/>
                   <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.25}/>
                 </linearGradient>
@@ -555,32 +968,63 @@ export default function ProgressTracker() {
                 axisLine={{ stroke: '#141414', strokeOpacity: 0.15 }}
                 tickLine={false}
               />
-              <Tooltip 
+              <RechartsTooltip 
                 content={<CustomTooltip />}
-                cursor={{ fill: 'rgba(20, 20, 20, 0.03)' }}
+                cursor={{ stroke: 'rgba(20, 20, 20, 0.1)', strokeWidth: 1, strokeDasharray: '3 3' }}
               />
-              <Bar 
+              <Line 
+                type="monotone"
                 dataKey="count" 
-                fill="url(#barGradient)"
-                radius={[3, 3, 0, 0]}
-                maxBarSize={chartViewMode === 'daily' ? 14 : 45}
-              >
-                {chartData.map((entry, index) => {
-                  const hasCompletions = entry.count > 0;
-                  return (
-                    <Cell 
-                      key={`cell-${index}`} 
-                      fill={hasCompletions ? '#f59e0b' : '#eee'} 
-                      stroke={hasCompletions ? '#d97706' : '#d4d4d8'}
-                      strokeWidth={hasCompletions ? 1 : 0.5}
-                      strokeDasharray={hasCompletions ? '' : '1 2'}
-                    />
-                  );
-                })}
-              </Bar>
-            </BarChart>
+                stroke="#f59e0b"
+                strokeWidth={3}
+                dot={{ r: 4, fill: '#f59e0b', stroke: '#fff', strokeWidth: 2 }}
+                activeDot={{ r: 6, fill: '#141414', stroke: '#f59e0b', strokeWidth: 2 }}
+              />
+            </LineChart>
           </ResponsiveContainer>
         </div>
+      </div>
+
+      {/* Recent Wellness Journals Section */}
+      <div className="bg-white border border-[#141414] p-6 shadow-sm space-y-6">
+        <div className="flex items-center gap-2 border-b border-[#141414]/10 pb-4">
+          <BookOpen size={18} className="text-amber-500" />
+          <h3 className="text-xs font-mono uppercase tracking-widest font-black">Recent Wellness Logs</h3>
+        </div>
+        
+        {journals.length === 0 ? (
+          <div className="bg-neutral-50 p-6 text-center border border-dashed border-[#141414]/20">
+            <p className="text-xs text-neutral-500 font-mono uppercase tracking-widest">No wellness logs yet.</p>
+            <p className="text-xs font-serif italic text-neutral-600 mt-2">Start your streak today by logging a daily check-in!</p>
+          </div>
+        ) : (
+          <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
+            {journals.map(journal => (
+              <div key={journal.id} className="bg-neutral-50 border border-[#141414]/10 p-4 relative group rounded-sm">
+                <div className="flex justify-between items-start mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">
+                      {journal.stress_level === 1 && '😖'}
+                      {journal.stress_level === 2 && '😕'}
+                      {journal.stress_level === 3 && '😐'}
+                      {journal.stress_level === 4 && '🙂'}
+                      {journal.stress_level === 5 && '🤩'}
+                    </span>
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#141414]">
+                      {journal.stress_level === 1 ? 'Very Stressed' : journal.stress_level === 5 ? 'Feeling Great' : 'Okay'}
+                    </span>
+                  </div>
+                  <span className="text-[9px] font-mono text-neutral-500 uppercase">
+                    {new Date(journal.created_at).toLocaleDateString()}
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-800 leading-relaxed pr-4 whitespace-pre-wrap">
+                  {journal.content}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Filter and active goal task grid outline */}
@@ -622,6 +1066,25 @@ export default function ProgressTracker() {
           </form>
         </div>
 
+        <div className="flex justify-end gap-2 pb-4">
+          <button
+            onClick={handleSendEmail}
+            disabled={sendingEmail}
+            className="flex items-center gap-2 bg-neutral-800 text-white px-4 py-2 text-[10px] font-bold uppercase tracking-widest hover:bg-neutral-900 transition-all rounded-sm disabled:opacity-50"
+          >
+            <Mail size={14} />
+            {sendingEmail ? 'Sending...' : 'Email Plan'}
+          </button>
+          <button
+            onClick={handleExportToDocs}
+            disabled={exportingToDocs}
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 text-[10px] font-bold uppercase tracking-widest hover:bg-blue-700 transition-all rounded-sm disabled:opacity-50"
+          >
+            <FileText size={14} />
+            {exportingToDocs ? 'Exporting...' : 'Export Plan to Google Docs'}
+          </button>
+        </div>
+
         {/* Milestone checklist rows */}
         <div className="space-y-3">
           {milestones
@@ -633,51 +1096,139 @@ export default function ProgressTracker() {
               return (
                 <div 
                   key={m.id}
-                  onClick={() => handleToggleMilestone(m.id)}
-                  className={`p-4 border transition-all duration-200 cursor-pointer flex justify-between items-center gap-4 ${
+                  className={`border transition-all duration-200 ${
                     m.isCompleted 
                       ? 'bg-neutral-50 border-neutral-200 opacity-60' 
-                      : 'bg-white border-[#141414] hover:bg-neutral-100/50 hover:translate-x-1'
+                      : 'bg-white border-[#141414] hover:translate-x-1'
                   }`}
                 >
-                  <div className="flex items-center gap-3.5 min-w-0">
-                    <button 
-                      className={`w-6 h-6 border flex items-center justify-center shrink-0 transition-all ${
-                        m.isCompleted 
-                          ? 'bg-[#141414] border-[#141414] text-white' 
-                          : 'border-neutral-400 bg-white hover:border-[#141414]'
-                      }`}
-                    >
-                      {m.isCompleted && <span className="text-[10px] font-black">✓</span>}
-                    </button>
+                  <div 
+                    onClick={() => handleToggleMilestone(m.id)}
+                    className="p-4 cursor-pointer flex justify-between items-center gap-4 hover:bg-neutral-100/50"
+                  >
+                    <div className="flex items-center gap-3.5 min-w-0">
+                      <button 
+                        className={`w-6 h-6 border flex items-center justify-center shrink-0 transition-all ${
+                          m.isCompleted 
+                            ? 'bg-[#141414] border-[#141414] text-white' 
+                            : 'border-neutral-400 bg-white hover:border-[#141414]'
+                        }`}
+                      >
+                        {m.isCompleted && <span className="text-[10px] font-black">✓</span>}
+                      </button>
 
-                    <div className="space-y-0.5 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className={`inline-flex items-center gap-1 text-[8px] font-mono font-black uppercase tracking-wider border rounded-sm px-1.5 py-0.5 ${theme.bg} ${theme.border} ${theme.color}`}>
-                          <CatIcon size={10} /> {m.category}
-                        </span>
-                        <span className="text-[8px] font-mono tracking-widest opacity-40 uppercase font-bold">
-                          {m.difficulty}
-                        </span>
+                      <div className="space-y-0.5 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`inline-flex items-center gap-1 text-[8px] font-mono font-black uppercase tracking-wider border rounded-sm px-1.5 py-0.5 ${theme.bg} ${theme.border} ${theme.color}`}>
+                            <CatIcon size={10} /> {m.category}
+                          </span>
+                          <span className="text-[8px] font-mono tracking-widest opacity-40 uppercase font-bold">
+                            {m.difficulty}
+                          </span>
+                        </div>
+                        <p className={`font-bold text-sm truncate leading-tight text-neutral-900 ${m.isCompleted ? 'line-through text-neutral-400' : ''}`}>
+                          {m.title}
+                        </p>
                       </div>
-                      <p className={`font-bold text-sm truncate leading-tight text-neutral-900 ${m.isCompleted ? 'line-through text-neutral-400' : ''}`}>
-                        {m.title}
-                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-3 shrink-0">
+                      <button
+                        onClick={(e) => toggleExpanded(m.id, e)}
+                        className={`p-1.5 rounded-sm transition-all flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider ${
+                          expandedMilestones.has(m.id)
+                            ? 'bg-neutral-200 text-[#141414]'
+                            : 'text-neutral-400 hover:text-[#141414] hover:bg-neutral-100'
+                        }`}
+                        title="Notes & Journal"
+                      >
+                        <FileText size={12} />
+                        <span className="hidden sm:inline">Notes {m.notes?.length ? `(${m.notes.length})` : ''}</span>
+                      </button>
+                      
+                      {!m.isCompleted && (
+                        <div className="flex items-center gap-1 mr-2 border-r border-l border-[#141414]/10 px-3">
+                          <button
+                            onClick={(e) => handleToggleReminder(m.id, 'daily', e)}
+                            className={`p-1.5 rounded-sm transition-all text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 ${
+                              m.reminder === 'daily' 
+                                ? 'bg-amber-100 text-amber-700 border border-amber-200' 
+                                : 'text-neutral-400 hover:bg-neutral-100 hover:text-[#141414]'
+                            }`}
+                            title="Daily Reminder"
+                          >
+                            <BellRing size={12} className={m.reminder === 'daily' ? 'animate-pulse' : ''} /> 
+                            <span className="hidden sm:inline">Daily</span>
+                          </button>
+                          <button
+                            onClick={(e) => handleToggleReminder(m.id, 'weekly', e)}
+                            className={`p-1.5 rounded-sm transition-all text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 ${
+                              m.reminder === 'weekly' 
+                                ? 'bg-blue-100 text-blue-700 border border-blue-200' 
+                                : 'text-neutral-400 hover:bg-neutral-100 hover:text-[#141414]'
+                            }`}
+                            title="Weekly Reminder"
+                          >
+                            <Bell size={12} /> 
+                            <span className="hidden sm:inline">Weekly</span>
+                          </button>
+                        </div>
+                      )}
+                      <span className="text-[11px] font-black font-mono tracking-tight text-[#141414] bg-neutral-100 px-2 py-0.5 rounded border border-neutral-200">
+                        +{m.xpValue} XP
+                      </span>
+                      <button 
+                        onClick={(e) => handleDeleteMilestone(m.id, e)}
+                        className="p-1 hover:text-red-600 hover:bg-neutral-100 rounded text-neutral-400 transition-colors"
+                        title="Remove milestone card"
+                      >
+                        <Trash2 size={13} />
+                      </button>
                     </div>
                   </div>
-
-                  <div className="flex items-center gap-3 shrink-0">
-                    <span className="text-[11px] font-black font-mono tracking-tight text-[#141414] bg-neutral-100 px-2 py-0.5 rounded border border-neutral-200">
-                      +{m.xpValue} XP
-                    </span>
-                    <button 
-                      onClick={(e) => handleDeleteMilestone(m.id, e)}
-                      className="p-1 hover:text-red-600 hover:bg-neutral-100 rounded text-neutral-400 transition-colors"
-                      title="Remove milestone card"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
+                  
+                  {expandedMilestones.has(m.id) && (
+                    <div className="border-t border-[#141414]/10 bg-neutral-50/50 p-4 space-y-4">
+                      <div className="space-y-2">
+                        {m.notes?.map(note => (
+                          <div key={note.id} className="bg-white border border-[#141414]/10 p-3 rounded-sm relative group">
+                            <p className="text-xs text-neutral-800 pr-6">{note.text}</p>
+                            <div className="flex items-center justify-between mt-2">
+                              <span className="text-[9px] font-mono text-neutral-400">
+                                {new Date(note.date).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                              </span>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleDeleteNote(m.id, note.id); }}
+                                className="text-neutral-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <Trash2 size={11} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                        {(!m.notes || m.notes.length === 0) && (
+                          <p className="text-[10px] uppercase tracking-widest font-bold text-neutral-400 text-center py-2">No notes added yet</p>
+                        )}
+                      </div>
+                      
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="Add a private note or update..."
+                          value={newNoteText[m.id] || ''}
+                          onChange={(e) => setNewNoteText(prev => ({ ...prev, [m.id]: e.target.value }))}
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleAddNote(m.id); }}
+                          className="flex-1 bg-white border border-[#141414]/20 p-2 text-xs focus:outline-none focus:border-[#141414]"
+                        />
+                        <button
+                          onClick={() => handleAddNote(m.id)}
+                          className="bg-[#141414] text-white px-3 py-2 text-[10px] font-bold uppercase tracking-widest hover:opacity-90"
+                        >
+                          Save
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -703,6 +1254,81 @@ export default function ProgressTracker() {
         </p>
       </div>
 
+      <AnimatePresence>
+        {isCheckinModalOpen && (
+          <div className="fixed inset-0 bg-[#141414]/40 backdrop-blur-xs z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white border border-[#141414] w-full max-w-md p-6 relative shadow-2xl"
+            >
+              <button
+                onClick={() => setIsCheckinModalOpen(false)}
+                className="absolute right-4 top-4 text-neutral-400 hover:text-[#141414]"
+              >
+                <Trash2 size={20} />
+              </button>
+              
+              <h3 className="text-xl font-serif italic text-neutral-900 border-b border-neutral-100 pb-3 mb-4">
+                Daily Wellness Check-in
+              </h3>
+              
+              <form onSubmit={handleWellnessCheckin} className="space-y-4">
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-[#141414]">
+                    Mood / Stress Level
+                  </label>
+                  <div className="flex gap-2 justify-between">
+                    {[1, 2, 3, 4, 5].map((val) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setMood(val)}
+                        className={`w-12 h-12 flex items-center justify-center border font-bold text-lg rounded-sm transition-all ${
+                          mood === val 
+                            ? 'bg-amber-400 border-amber-500 text-black scale-110 shadow-sm'
+                            : 'bg-white border-[#141414]/20 text-neutral-400 hover:border-amber-300'
+                        }`}
+                      >
+                        {val === 1 && '😖'}
+                        {val === 2 && '😕'}
+                        {val === 3 && '😐'}
+                        {val === 4 && '🙂'}
+                        {val === 5 && '🤩'}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[9px] text-center text-neutral-500 font-mono uppercase tracking-wider">
+                    {mood === 1 ? 'Very Stressed' : mood === 5 ? 'Feeling Great' : 'Okay'}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-[#141414]">
+                    Daily Accomplishments
+                  </label>
+                  <textarea
+                    value={accomplishments}
+                    onChange={(e) => setAccomplishments(e.target.value)}
+                    required
+                    placeholder="What did you achieve today? (Big or small)"
+                    className="w-full border border-[#141414] p-3 text-xs min-h-[100px] bg-neutral-50 focus:bg-white transition-colors"
+                  />
+                </div>
+                
+                <button
+                  type="submit"
+                  disabled={isSubmittingCheckin || !accomplishments.trim()}
+                  className="w-full bg-[#141414] text-white p-3 text-xs font-bold uppercase tracking-widest flex justify-center items-center gap-2 hover:bg-neutral-800 disabled:opacity-50 transition-colors rounded-sm mt-4"
+                >
+                  {isSubmittingCheckin ? 'Saving...' : 'Submit Log'}
+                </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

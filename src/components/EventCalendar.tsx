@@ -16,6 +16,8 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { auth } from '../firebase';
+import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 
 interface CalendarEvent {
   id: string;
@@ -616,12 +618,12 @@ export default function EventCalendar() {
 
                 <div className="space-y-1">
                   <label className="block text-[10px] font-black uppercase tracking-widest text-[#141414]">
-                    Supplementary Notes
+                    Notes
                   </label>
                   <textarea
                     value={newEvent.description}
                     onChange={(e) => setNewEvent(prev => ({ ...prev, description: e.target.value }))}
-                    placeholder="Enter support contact numbers or required documents list to bring along..."
+                    placeholder="Attach case numbers, specific addresses, or details..."
                     className="w-full border border-[#141414] p-3 text-xs min-h-[85px] max-h-[140px]"
                   />
                 </div>
