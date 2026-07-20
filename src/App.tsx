@@ -448,7 +448,7 @@ function MainApp() {
             <h4 className="text-xs uppercase tracking-widest opacity-40 mb-4">Quick Links</h4>
             <ul className="flex flex-col gap-2 text-sm">
               <li><button type="button" onClick={() => setActiveTab('mental-health')} className="hover:underline focus-visible:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60 text-left">Mental Health Support</button></li>
-              <li><button type="button" onClick={() => setActiveTab('resources')} className="hover:underline focus-visible:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60 text-left">Parole Resources</button></li>
+              <li><button type="button" onClick={() => { setResourcesShowAddPO(false); setActiveTab('resources'); }} className="hover:underline focus-visible:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60 text-left">Parole Resources</button></li>
               <li><button type="button" onClick={() => setActiveTab('tools')} className="hover:underline focus-visible:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60 text-left">Legal Aid</button></li>
             </ul>
           </div>

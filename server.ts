@@ -24,6 +24,7 @@ db.exec(`
     interests TEXT,
     looking_to_meet INTEGER DEFAULT 0,
     wellness_reminders INTEGER DEFAULT 0,
+    wellness_reminder_time TEXT DEFAULT '09:00',
     age INTEGER,
     gender TEXT,
     pronouns TEXT,
@@ -302,6 +303,10 @@ try {
 
 try {
   db.exec("ALTER TABLE users ADD COLUMN wellness_reminders INTEGER DEFAULT 0");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN wellness_reminder_time TEXT DEFAULT '09:00'");
 } catch (e) {}
 
 try {
