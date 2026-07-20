@@ -231,7 +231,13 @@ db.exec(`
 // on a fresh install (previously these ran first and silently no-op'd via the empty
 // catch blocks, leaving auth/role/suspension columns missing on new databases).
 try {
-  db.exec("ALTER TABLE users ADD COLUMN email TEXT UNIQUE");
+  // SQLite's ADD COLUMN can't carry a UNIQUE constraint directly, so add the
+  // column plain and enforce uniqueness with a separate index (NULLs from
+  // pre-existing rows don't collide under a standard unique index).
+  db.exec("ALTER TABLE users ADD COLUMN email TEXT");
+} catch (e) {}
+try {
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)");
 } catch (e) {}
 
 try {
@@ -1559,9 +1565,13 @@ async function startServer() {
     res.json({ success: true });
   });
 
+  const deleteThreadCascade = db.transaction((threadId: string) => {
+    db.prepare("DELETE FROM replies WHERE thread_id = ?").run(threadId);
+    db.prepare("DELETE FROM threads WHERE id = ?").run(threadId);
+  });
+
   app.delete("/api/admin/posts/:id", requireAuth, requireRole(['moderator', 'admin', 'super_admin']), (req: any, res) => {
-    db.prepare("DELETE FROM replies WHERE thread_id = ?").run(req.params.id);
-    db.prepare("DELETE FROM threads WHERE id = ?").run(req.params.id);
+    deleteThreadCascade(req.params.id);
     res.json({ success: true });
   });
 
