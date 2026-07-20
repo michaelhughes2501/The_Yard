@@ -185,7 +185,7 @@ export default function TheYard() {
           'system',
           'Yard Status Synchronized',
           presenceForm.public_status 
-            ? `Broadcasted physical meet update: "${presenceForm.public_status}"`
+            ? `Broadcasted yard presence update: "${presenceForm.public_status}"`
             : `Updated your Yard interests to: "${presenceForm.interests}"`
         );
       } else {
@@ -588,7 +588,7 @@ export default function TheYard() {
       logActivity(
         'kite',
         'Launched private Kite',
-        `Dispatched an encrypted peer-to-peer message to ${name}.`
+        `Dispatched a kite to ${name}.`
       );
     } catch (err) {
       alert('Failed to send kite.');
@@ -715,7 +715,7 @@ export default function TheYard() {
         // Availability status check
         if (u.looking_to_meet) {
           score += 4;
-          reasons.push('and looking to meet');
+          reasons.push('and hitting the yard');
         }
 
         // Shared location check
@@ -896,7 +896,7 @@ export default function TheYard() {
                 className="w-4 h-4 border border-[#141414]"
               />
               <label htmlFor="presence-meet-check" className="text-xs font-bold font-mono uppercase tracking-wide cursor-pointer select-none">
-                🟢 Signal availability: Put me high on the directory as <strong className="text-amber-950">"ACTIVE ON THE YARD"</strong> (Ready to connect and meet peers)
+                🟢 Signal availability: Put me high on the directory as <strong className="text-amber-950">"ACTIVE ON THE YARD"</strong> (Ready to connect and socialize on the yard)
               </label>
             </div>
 
@@ -1352,7 +1352,7 @@ export default function TheYard() {
                       typeLabel = 'Net Link';
                     } else if (act.type === 'kite') {
                       bulletColor = 'bg-cyan-400';
-                      typeLabel = 'Direct Message';
+                      typeLabel = 'Kite';
                     } else if (act.type === 'story') {
                       bulletColor = 'bg-purple-400';
                       typeLabel = 'Publishing';
@@ -1437,7 +1437,7 @@ export default function TheYard() {
                 : 'hover:bg-gray-100 text-[#141414]'
             }`}
           >
-            Looking to Meet
+            On The Yard
           </button>
         </div>
       </div>
@@ -1448,7 +1448,7 @@ export default function TheYard() {
             {filterMode === 'connections' 
               ? "You haven't connected with anyone in The Yard yet. Find peers below to build your network." 
               : filterMode === 'meet' 
-              ? "No members are currently listed as 'Looking to Meet'. Be the first by saving your update above!"
+              ? "No members are currently listed as 'On The Yard'. Be the first by saving your update above!"
               : "No users found. Be the first to invite your brothers."}
           </div>
         )}

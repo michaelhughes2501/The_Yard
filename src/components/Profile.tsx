@@ -47,12 +47,14 @@ export default function Profile() {
     cases: any[];
     mentorships: any[];
     jobApplications: any[];
+    threadCount: number;
     loading: boolean;
   }>({
     documents: [],
     cases: [],
     mentorships: [],
     jobApplications: [],
+    threadCount: 0,
     loading: true
   });
 
@@ -64,18 +66,22 @@ export default function Profile() {
     if (!token) return;
     try {
       const headers = { Authorization: `Bearer ${token}` };
-      const [docsRes, casesRes, mentorsRes, jobsRes] = await Promise.all([
+      const [docsRes, casesRes, mentorsRes, jobsRes, threadsRes] = await Promise.all([
         fetch('/api/documents', { headers }).then(r => r.ok ? r.json() : []),
         fetch('/api/legal-cases', { headers }).then(r => r.ok ? r.json() : []),
         fetch('/api/mentorships', { headers }).then(r => r.ok ? r.json() : []),
-        fetch('/api/job-applications', { headers }).then(r => r.ok ? r.json() : [])
+        fetch('/api/job-applications', { headers }).then(r => r.ok ? r.json() : []),
+        fetch('/api/threads', { headers }).then(r => r.ok ? r.json() : [])
       ]);
       
+      const myThreads = Array.isArray(threadsRes) ? threadsRes.filter((t: any) => t.author_id === user?.id) : [];
+
       setTasksData({
         documents: Array.isArray(docsRes) ? docsRes : [],
         cases: Array.isArray(casesRes) ? casesRes : [],
         mentorships: Array.isArray(mentorsRes) ? mentorsRes : [],
         jobApplications: Array.isArray(jobsRes) ? jobsRes : [],
+        threadCount: myThreads.length,
         loading: false
       });
     } catch (err) {
@@ -475,11 +481,18 @@ export default function Profile() {
                   </button>
                 )}
               </div>
-              {profile.is_mentor === 1 && (
-                <span className="inline-flex items-center gap-1 text-xs uppercase tracking-widest bg-[#141414] text-[#E4E3E0] px-2 py-1 mt-2">
-                  <Shield size={12} /> Verified Mentor
-                </span>
-              )}
+              <div className="flex flex-wrap gap-2 mt-2">
+                {(profile.is_mentor === 1 || tasksData.mentorships.some(m => m.mentor_id === user?.id)) && (
+                  <span className="inline-flex items-center gap-1 text-xs uppercase tracking-widest bg-[#141414] text-[#E4E3E0] px-2 py-1">
+                    <Shield size={12} /> Mentorship
+                  </span>
+                )}
+                {(tasksData.threadCount >= 2 || tasksData.documents.length >= 2 || tasksData.jobApplications.length >= 2 || tasksData.cases.length >= 2) && (
+                  <span className="inline-flex items-center gap-1 text-xs uppercase tracking-widest bg-amber-400 text-amber-900 px-2 py-1 font-bold">
+                    <Award size={12} /> Community Contributor
+                  </span>
+                )}
+              </div>
               <div className="text-[11px] opacity-60 uppercase tracking-wider mt-1.5 font-medium">
                 Drag and drop image here to change photo
               </div>

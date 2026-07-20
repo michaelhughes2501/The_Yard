@@ -485,7 +485,7 @@ async function startServer() {
   });
 
   app.get("/api/users/profile", requireAuth, (req: any, res) => {
-    const user = db.prepare("SELECT id, username as name, facility as history, location, bio, is_mentor, hide_location, hide_history, is_admin, role, avatar_url, public_status, interests, looking_to_meet, wellness_reminders, age, gender, pronouns, looking_for, relationship_status, incarceration_details FROM users WHERE id = ?").get(req.userId);
+    const user = db.prepare("SELECT id, username as name, facility as history, location, bio, is_mentor, hide_location, hide_history, is_admin, role, avatar_url, public_status, interests, looking_to_meet, wellness_reminders, wellness_reminder_time, age, gender, pronouns, looking_for, relationship_status, incarceration_details FROM users WHERE id = ?").get(req.userId);
     if (user) {
       (user as any).role = (user as any).role === 'user' && (user as any).is_admin === 1 ? 'super_admin' : (user as any).role;
       (user as any).looking_to_meet = (user as any).looking_to_meet === 1;
@@ -495,16 +495,17 @@ async function startServer() {
   });
 
   app.put("/api/users/profile", requireAuth, (req: any, res) => {
-    const { history, location, bio, hide_location, hide_history, avatar_url, public_status, interests, looking_to_meet, wellness_reminders, age, gender, pronouns, looking_for, relationship_status, incarceration_details } = req.body;
+    const { history, location, bio, hide_location, hide_history, avatar_url, public_status, interests, looking_to_meet, wellness_reminders, wellness_reminder_time, age, gender, pronouns, looking_for, relationship_status, incarceration_details } = req.body;
     
     // Read previous row to preserve unchanged optional fields
-    const existing = db.prepare("SELECT avatar_url, public_status, interests, looking_to_meet, wellness_reminders, age, gender, pronouns, looking_for, relationship_status, incarceration_details FROM users WHERE id = ?").get(req.userId) as any;
+    const existing = db.prepare("SELECT avatar_url, public_status, interests, looking_to_meet, wellness_reminders, wellness_reminder_time, age, gender, pronouns, looking_for, relationship_status, incarceration_details FROM users WHERE id = ?").get(req.userId) as any;
     
     const final_avatar = avatar_url !== undefined ? avatar_url : (existing ? existing.avatar_url : null);
     const final_status = public_status !== undefined ? public_status : (existing ? existing.public_status : null);
     const final_interests = interests !== undefined ? interests : (existing ? existing.interests : null);
     const final_looking = looking_to_meet !== undefined ? (looking_to_meet ? 1 : 0) : (existing ? existing.looking_to_meet : 0);
     const final_wellness_reminders = wellness_reminders !== undefined ? (wellness_reminders ? 1 : 0) : (existing ? existing.wellness_reminders : 0);
+    const final_wellness_reminder_time = wellness_reminder_time !== undefined ? wellness_reminder_time : (existing ? existing.wellness_reminder_time : '09:00');
     const final_age = age !== undefined ? age : (existing ? existing.age : null);
     const final_gender = gender !== undefined ? gender : (existing ? existing.gender : null);
     const final_pronouns = pronouns !== undefined ? pronouns : (existing ? existing.pronouns : null);
@@ -512,8 +513,8 @@ async function startServer() {
     const final_relationship_status = relationship_status !== undefined ? relationship_status : (existing ? existing.relationship_status : null);
     const final_incarceration_details = incarceration_details !== undefined ? incarceration_details : (existing ? existing.incarceration_details : null);
 
-    db.prepare("UPDATE users SET facility = ?, location = ?, bio = ?, hide_location = ?, hide_history = ?, avatar_url = ?, public_status = ?, interests = ?, looking_to_meet = ?, wellness_reminders = ?, age = ?, gender = ?, pronouns = ?, looking_for = ?, relationship_status = ?, incarceration_details = ? WHERE id = ?").run(
-      history, location, bio, hide_location ? 1 : 0, hide_history ? 1 : 0, final_avatar, final_status, final_interests, final_looking, final_wellness_reminders, final_age, final_gender, final_pronouns, final_looking_for, final_relationship_status, final_incarceration_details, req.userId
+    db.prepare("UPDATE users SET facility = ?, location = ?, bio = ?, hide_location = ?, hide_history = ?, avatar_url = ?, public_status = ?, interests = ?, looking_to_meet = ?, wellness_reminders = ?, wellness_reminder_time = ?, age = ?, gender = ?, pronouns = ?, looking_for = ?, relationship_status = ?, incarceration_details = ? WHERE id = ?").run(
+      history, location, bio, hide_location ? 1 : 0, hide_history ? 1 : 0, final_avatar, final_status, final_interests, final_looking, final_wellness_reminders, final_wellness_reminder_time, final_age, final_gender, final_pronouns, final_looking_for, final_relationship_status, final_incarceration_details, req.userId
     );
     res.json({ success: true });
   });

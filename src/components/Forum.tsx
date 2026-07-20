@@ -154,7 +154,7 @@ export default function Forum() {
             </select>
           </div>
           <div>
-            <label className="block text-xs uppercase tracking-widest font-bold mb-2">Message</label>
+            <label className="block text-xs uppercase tracking-widest font-bold mb-2">Post Content</label>
             <textarea 
               required
               value={newContent}

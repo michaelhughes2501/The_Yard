@@ -846,6 +846,84 @@ export default function MentalHealthSupport() {
         </div>
       </div>
 
+      {/* Rehabilitation Programs and Self-Help Library */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 border-t border-[#141414]/10 pt-12">
+        {/* Rehabilitation Programs */}
+        <section className="bg-white border-2 border-[#141414] p-8 space-y-6 flex flex-col text-left">
+          <div className="flex items-center gap-3 border-b border-[#141414]/10 pb-4">
+            <BookOpen size={28} className="text-[#141414]" />
+            <div>
+              <span className="text-[10px] font-mono uppercase tracking-widest text-gray-500 font-bold block">Local & National</span>
+              <h3 className="text-3xl font-serif italic font-bold">Rehabilitation Programs</h3>
+            </div>
+          </div>
+          <p className="text-sm opacity-80 leading-relaxed">
+            Connecting with structured rehabilitation programs provides community support, accountability, and essential tools for long-term recovery and reintegration.
+          </p>
+          <div className="space-y-4 overflow-y-auto max-h-80 pr-2">
+            <div className="border border-[#141414]/20 p-4 space-y-2">
+              <h4 className="font-bold text-base">Alcoholics Anonymous (AA) / Narcotics Anonymous (NA)</h4>
+              <p className="text-xs opacity-70">Peer-led support groups focused on maintaining sobriety through a 12-step program and shared experiences.</p>
+              <a href="https://www.aa.org/" target="_blank" rel="noopener noreferrer" className="text-[10px] font-mono uppercase tracking-widest underline text-blue-600 block mt-2">Find a Meeting</a>
+            </div>
+            <div className="border border-[#141414]/20 p-4 space-y-2">
+              <h4 className="font-bold text-base">SMART Recovery</h4>
+              <p className="text-xs opacity-70">Science-based, self-empowering addiction recovery support groups that focus on cognitive behavioral therapy techniques.</p>
+              <a href="https://www.smartrecovery.org/" target="_blank" rel="noopener noreferrer" className="text-[10px] font-mono uppercase tracking-widest underline text-blue-600 block mt-2">Explore SMART</a>
+            </div>
+            <div className="border border-[#141414]/20 p-4 space-y-2">
+              <h4 className="font-bold text-base">Volunteers of America (VOA) Re-entry Services</h4>
+              <p className="text-xs opacity-70">Provides transitional housing, employment training, and counseling services specifically designed for returning citizens.</p>
+              <a href="https://www.voa.org/" target="_blank" rel="noopener noreferrer" className="text-[10px] font-mono uppercase tracking-widest underline text-blue-600 block mt-2">View Services</a>
+            </div>
+          </div>
+        </section>
+
+        {/* Self-Help Library */}
+        <section className="bg-[#141414] text-[#E4E3E0] border-2 border-[#141414] p-8 space-y-6 flex flex-col text-left">
+          <div className="flex items-center gap-3 border-b border-[#E4E3E0]/15 pb-4">
+            <Archive size={28} className="text-[#E4E3E0]" />
+            <div>
+              <span className="text-[10px] font-mono uppercase tracking-widest text-gray-400 font-bold block">Personal Development</span>
+              <h3 className="text-3xl font-serif italic font-bold">Self-Help Library</h3>
+            </div>
+          </div>
+          <p className="text-sm opacity-80 leading-relaxed">
+            Curated materials focused on personal growth, financial literacy, anger management, and building a positive post-incarceration life.
+          </p>
+          <div className="space-y-4 overflow-y-auto max-h-80 pr-2">
+            <div className="bg-white/5 border border-white/10 p-4 space-y-2 flex justify-between items-center">
+              <div>
+                <h4 className="font-bold text-base text-white">Financial Literacy 101</h4>
+                <p className="text-xs text-gray-400 mt-1">Understanding credit, budgeting basics, and opening a bank account.</p>
+              </div>
+              <button className="px-3 py-1.5 bg-white text-[#141414] text-[10px] font-bold uppercase tracking-widest hover:opacity-90">Read</button>
+            </div>
+            <div className="bg-white/5 border border-white/10 p-4 space-y-2 flex justify-between items-center">
+              <div>
+                <h4 className="font-bold text-base text-white">Cognitive Behavioral Worksheets</h4>
+                <p className="text-xs text-gray-400 mt-1">Downloadable exercises to identify negative thought patterns and reframe them.</p>
+              </div>
+              <button className="px-3 py-1.5 bg-white text-[#141414] text-[10px] font-bold uppercase tracking-widest hover:opacity-90">Download</button>
+            </div>
+            <div className="bg-white/5 border border-white/10 p-4 space-y-2 flex justify-between items-center">
+              <div>
+                <h4 className="font-bold text-base text-white">Building Healthy Relationships</h4>
+                <p className="text-xs text-gray-400 mt-1">Navigating family dynamics and setting boundaries upon return.</p>
+              </div>
+              <button className="px-3 py-1.5 bg-white text-[#141414] text-[10px] font-bold uppercase tracking-widest hover:opacity-90">Read</button>
+            </div>
+             <div className="bg-white/5 border border-white/10 p-4 space-y-2 flex justify-between items-center">
+              <div>
+                <h4 className="font-bold text-base text-white">De-escalation Handbook</h4>
+                <p className="text-xs text-gray-400 mt-1">Techniques to stay calm and assertive without resorting to violence or aggression.</p>
+              </div>
+              <button className="px-3 py-1.5 bg-white text-[#141414] text-[10px] font-bold uppercase tracking-widest hover:opacity-90">Read</button>
+            </div>
+          </div>
+        </section>
+      </div>
+
       {/* Coping guides Modal Overlay */}
       <AnimatePresence>
         {selectedArticle && (
