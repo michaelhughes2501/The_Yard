@@ -225,6 +225,22 @@ db.exec(`
     FOREIGN KEY(sender_id) REFERENCES users(id),
     FOREIGN KEY(receiver_id) REFERENCES users(id)
   );
+
+  CREATE TABLE IF NOT EXISTS mentorship_surveys (
+    id TEXT PRIMARY KEY,
+    user_id TEXT UNIQUE,
+    role_preference TEXT DEFAULT 'both',
+    interests TEXT,
+    life_goals TEXT,
+    cadence TEXT DEFAULT 'weekly',
+    communication_style TEXT DEFAULT 'all',
+    experience_level TEXT DEFAULT 'early_reentry',
+    personal_statement TEXT,
+    availability_status TEXT DEFAULT 'actively_seeking',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id)
+  );
 `);
 
 // Column/table migrations for databases created before these fields existed.
@@ -356,7 +372,204 @@ try {
   db.exec("ALTER TABLE kites ADD COLUMN is_anonymous INTEGER DEFAULT 0");
 } catch (e) {}
 
+try {
+  db.exec("ALTER TABLE testimonials ADD COLUMN title TEXT");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE testimonials ADD COLUMN category TEXT DEFAULT 'general'");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE testimonials ADD COLUMN advice TEXT");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE testimonials ADD COLUMN time_served TEXT");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE testimonials ADD COLUMN years_free TEXT");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE testimonials ADD COLUMN tags TEXT");
+} catch (e) {}
+
+function seedCommunityData() {
+  try {
+    const userCount = db.prepare("SELECT count(*) as count FROM users").get() as any;
+    if (userCount && userCount.count >= 3) return;
+
+    const seedUsers = [
+      {
+        id: "seed-user-marcus",
+        username: "Marcus Vance",
+        email: "marcus.vance@yardreentry.org",
+        password: "password123",
+        facility: "San Quentin State Prison",
+        location: "Denver, CO",
+        bio: "Lead Software Engineer at logistics tech firm. Served 12 years inside. Homeowner, mentor, and passionate about helping alumni land felony-friendly tech careers.",
+        public_status: "Available for code reviews and tech interview prep this weekend!",
+        interests: "Tech & Coding, Resume & Interview Prep, Small Business & Entrepreneurship, Second-Chance Banking & Credit",
+        is_mentor: 1,
+        looking_to_meet: 1,
+        survey: {
+          role_preference: 'mentor',
+          interests: ['Tech & Coding', 'Resume & Interview Prep', 'Small Business & Entrepreneurship', 'Second-Chance Banking & Credit'],
+          life_goals: ['Land a Felony-Friendly Career or Trade Apprenticeship', 'Launch Small Business / LLC', 'Achieve Financial Independence & 700+ Credit', 'Uplift Others & Guide Brothers/Sisters Coming Home'],
+          cadence: 'weekly',
+          communication_style: 'all',
+          experience_level: 'veteran_alumni',
+          personal_statement: 'Happy to review code, mock interview, and help you land that first tech or corporate role. Consistency wins.',
+          availability_status: 'actively_seeking'
+        }
+      },
+      {
+        id: "seed-user-elena",
+        username: "Elena Morales",
+        email: "elena.morales@yardreentry.org",
+        password: "password123",
+        facility: "CIW Chino",
+        location: "Denver, CO",
+        bio: "Paralegal and re-entry legal advocate. Served 6 years. Passionate about parole rights, clean lease agreements, and helping women transition smoothly post-release.",
+        public_status: "Holding weekly legal rights & parole check-in Q&A on Tuesdays.",
+        interests: "Legal & Parole Compliance, Affordable Housing Navigation, Family Reconnection & Parenting, Second-Chance Banking & Credit",
+        is_mentor: 1,
+        looking_to_meet: 1,
+        survey: {
+          role_preference: 'mentor',
+          interests: ['Legal & Parole Compliance', 'Affordable Housing Navigation', 'Family Reconnection & Parenting', 'Second-Chance Banking & Credit'],
+          life_goals: ['Successfully Terminate Parole / Get Off Paper', 'Secure Permanent Independent Housing', 'Rebuild Family Trust & Parental Rights', 'Uplift Others & Guide Brothers/Sisters Coming Home'],
+          cadence: 'biweekly',
+          communication_style: 'text_kites',
+          experience_level: 'veteran_alumni',
+          personal_statement: 'No one should navigate parole stipulations or lease applications alone. Here to share what worked for me.',
+          availability_status: 'actively_seeking'
+        }
+      },
+      {
+        id: "seed-user-david",
+        username: "David Chen",
+        email: "david.chen@yardreentry.org",
+        password: "password123",
+        facility: "Sing Sing Correctional Facility",
+        location: "Aurora, CO",
+        bio: "General Contractor & Founder of Chen & Sons Contracting. 3 years off paper. Built a 7-person crew hiring formerly incarcerated craftsmen.",
+        public_status: "Looking for apprentices eager to learn carpentry and electrical trades.",
+        interests: "Construction & Carpentry, Automotive & Welding, Small Business & Entrepreneurship, Commercial Driving (CDL)",
+        is_mentor: 1,
+        looking_to_meet: 1,
+        survey: {
+          role_preference: 'mentor',
+          interests: ['Construction & Carpentry', 'Automotive & Welding', 'Small Business & Entrepreneurship', 'Commercial Driving (CDL)'],
+          life_goals: ['Launch Small Business / LLC', 'Achieve Financial Independence & 700+ Credit', 'Maintain Ongoing Sobriety & Emotional Health', 'Uplift Others & Guide Brothers/Sisters Coming Home'],
+          cadence: 'weekly',
+          communication_style: 'video_calls',
+          experience_level: 'established',
+          personal_statement: 'Get your contractor tools and learn the trade. Blue-collar trades are completely felony-blind once you have real skills.',
+          availability_status: 'actively_seeking'
+        }
+      },
+      {
+        id: "seed-user-trevor",
+        username: "Trevor 'TJ' Jenkins",
+        email: "trevor.jenkins@yardreentry.org",
+        password: "password123",
+        facility: "San Quentin State Prison",
+        location: "Denver, CO",
+        bio: "Released 4 months ago. Apprentice carpenter and learning full-stack web development. Working on getting off paper and finding long-term housing.",
+        public_status: "Looking for a mentor in tech or construction to stay on track.",
+        interests: "Tech & Coding, Construction & Carpentry, Affordable Housing Navigation, Fitness & Strength Training",
+        is_mentor: 0,
+        looking_to_meet: 1,
+        survey: {
+          role_preference: 'mentee',
+          interests: ['Tech & Coding', 'Construction & Carpentry', 'Affordable Housing Navigation', 'Fitness & Strength Training'],
+          life_goals: ['Successfully Terminate Parole / Get Off Paper', 'Secure Permanent Independent Housing', 'Land a Felony-Friendly Career or Trade Apprenticeship', 'Achieve Financial Independence & 700+ Credit'],
+          cadence: 'weekly',
+          communication_style: 'all',
+          experience_level: 'early_reentry',
+          personal_statement: 'Eager to learn from alumni who made it through early parole without slipping up.',
+          availability_status: 'actively_seeking'
+        }
+      },
+      {
+        id: "seed-user-maya",
+        username: "Maya Lin",
+        email: "maya.lin@yardreentry.org",
+        password: "password123",
+        facility: "Central California Women's Facility",
+        location: "Denver, CO",
+        bio: "Recently released, studying for CompTIA A+ and JavaScript. Seeking an experienced mentor in software or tech sales to guide my career pivot.",
+        public_status: "Coding 4 hours every morning. Seeking accountability partner!",
+        interests: "Tech & Coding, Resume & Interview Prep, Sobriety & Recovery, Second-Chance Banking & Credit",
+        is_mentor: 0,
+        looking_to_meet: 1,
+        survey: {
+          role_preference: 'mentee',
+          interests: ['Tech & Coding', 'Resume & Interview Prep', 'Sobriety & Recovery', 'Second-Chance Banking & Credit'],
+          life_goals: ['Land a Felony-Friendly Career or Trade Apprenticeship', 'Maintain Ongoing Sobriety & Emotional Health', 'Successfully Terminate Parole / Get Off Paper', 'Secure Permanent Independent Housing'],
+          cadence: 'weekly',
+          communication_style: 'text_kites',
+          experience_level: 'early_reentry',
+          personal_statement: 'Looking for a sister or brother in tech to help me keep my head down and code every day.',
+          availability_status: 'actively_seeking'
+        }
+      },
+      {
+        id: "seed-user-carlos",
+        username: "Carlos Ramirez",
+        email: "carlos.ramirez@yardreentry.org",
+        password: "password123",
+        facility: "Federal Correctional Bastrop",
+        location: "Lakewood, CO",
+        bio: "Enrolled in commercial driver school (CDL-A). Looking for mentors in logistics, small fleet ownership, and financial budgeting.",
+        public_status: "Taking CDL exam next month! Open to connecting with owner-operators.",
+        interests: "Commercial Driving (CDL), Small Business & Entrepreneurship, Second-Chance Banking & Credit, Sobriety & Recovery",
+        is_mentor: 0,
+        looking_to_meet: 1,
+        survey: {
+          role_preference: 'mentee',
+          interests: ['Commercial Driving (CDL)', 'Small Business & Entrepreneurship', 'Second-Chance Banking & Credit', 'Sobriety & Recovery'],
+          life_goals: ['Land a Felony-Friendly Career or Trade Apprenticeship', 'Launch Small Business / LLC', 'Achieve Financial Independence & 700+ Credit', 'Successfully Terminate Parole / Get Off Paper'],
+          cadence: 'biweekly',
+          communication_style: 'all',
+          experience_level: 'early_reentry',
+          personal_statement: 'Targeting my CDL by June. Want to learn from folks running their own trucks.',
+          availability_status: 'actively_seeking'
+        }
+      }
+    ];
+
+    for (const u of seedUsers) {
+      db.prepare(`
+        INSERT OR IGNORE INTO users 
+        (id, username, email, password, facility, location, bio, public_status, interests, is_mentor, looking_to_meet)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        u.id, u.username, u.email, u.password, u.facility, u.location, u.bio,
+        u.public_status, u.interests, u.is_mentor, u.looking_to_meet
+      );
+
+      db.prepare(`
+        INSERT OR REPLACE INTO mentorship_surveys
+        (id, user_id, role_preference, interests, life_goals, cadence, communication_style, experience_level, personal_statement, availability_status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        crypto.randomUUID(), u.id, u.survey.role_preference,
+        JSON.stringify(u.survey.interests), JSON.stringify(u.survey.life_goals),
+        u.survey.cadence, u.survey.communication_style, u.survey.experience_level,
+        u.survey.personal_statement, u.survey.availability_status
+      );
+    }
+  } catch (err) {
+    console.error("Error seeding community members:", err);
+  }
+}
+
 async function startServer() {
+  seedCommunityData();
   const app = express();
   const PORT = 3000;
 
@@ -677,33 +890,86 @@ async function startServer() {
             id: crypto.randomUUID(),
             user_id: null,
             author_name: "Marcus Vance",
-            content: "After serving 12 years, I felt completely lost. Through The Yard, I found a coding mentor who guided me through stack certifications. Today, I'm a full-time software engineer at a logistics firm. Re-entry is hard, but we don't have to walk it alone.",
-            role: "Alumnus & Software Engineer",
+            title: "From 12 Years Inside to Lead Software Engineer & Homeowner",
+            content: "After serving 12 years in state custody, walking out the gate with $40 in gate money was terrifying. The Yard connected me to an alumni developer who taught me Git and JavaScript late nights while I worked warehouse day shifts. 4 years later, I am a lead engineer at a logistics firm and just closed on my first townhouse. Re-entry is steep, but with real brothers behind you, nobody has to walk it alone.",
+            role: "Lead Software Engineer",
+            category: "career",
+            advice: "Never conceal your past during interviews—own your story with calm confidence, show present mastery, and let your consistency do the talking.",
+            time_served: "12 years",
+            years_free: "4 years free",
+            tags: "Software Engineering, Coding Mentor, Homeowner",
             avatar_url: null,
+            likes_count: 28,
             created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
           },
           {
             id: crypto.randomUUID(),
             user_id: null,
             author_name: "David Chen",
-            content: "Connecting with an accountability partner and using the tools was made simple here. The Legal Tools tab helped me understand my rights, and the Mentorship program kept me grounded. Now celebrating 3 years of freedom, running a construction contracting business.",
-            role: "Construction Business Owner",
+            title: "Rebuilding After Release: From Day-Labor to a 6-Figure Contracting Company",
+            content: "Connecting with an accountability partner and using the legal tools here kept me grounded. The Legal Tools tab helped me understand my rights, and my mentor held me accountable every Sunday. Today, Chen & Sons Contracting employs 7 formerly incarcerated craftsmen. Now celebrating 3 years off paper and giving back daily.",
+            role: "General Contractor & Founder",
+            category: "entrepreneurship",
+            advice: "Compliance today buys absolute freedom tomorrow. Keep every PO slip, pass every UA, and invest your pay into your own trade tools.",
+            time_served: "7 years",
+            years_free: "3 years free",
+            tags: "General Contractor, Employer, Off Paper",
             avatar_url: null,
+            likes_count: 34,
             created_at: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString()
           },
           {
             id: crypto.randomUUID(),
             user_id: null,
             author_name: "Carlos Mendez",
-            content: "Finding felony-friendly housing was my biggest hurdle. Through the shared opportunities here, I moved into stable transitional housing within two weeks of release. Now I'm working as a peer navigator, helping others coming home.",
+            title: "Securing Stable Housing in Week 2 and Becoming a Lead Peer Navigator",
+            content: "Finding felony-friendly housing was my biggest fear. Through the housing directory here, I landed clean transitional housing in Denver within 10 days of release. Having a secure door to lock at night changed my mental health completely. Now I work full-time as a lead peer navigator, helping brothers stepping off the bus find their footing.",
             role: "Lead Peer Navigator",
+            category: "housing",
+            advice: "Show up in person with your binder ready—ID, social security card, certificates, and recommendation letters. Preparation beats stigma every time.",
+            time_served: "5 years",
+            years_free: "2 years free",
+            tags: "Transitional Housing, Peer Navigator, Denver",
             avatar_url: null,
+            likes_count: 19,
             created_at: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString()
+          },
+          {
+            id: crypto.randomUUID(),
+            user_id: null,
+            author_name: "Maya Robinson",
+            title: "Rebuilding Trust with My Children & Completing My Master's in Social Work",
+            content: "Being separated from my two daughters was the heaviest sentence. Upon release, I took it one afternoon at a time—no expectations, just consistent presence and showing up for homework. I utilized education grants, stayed focused on campus, and graduated last spring with honors. Today I advocate for family reunification policies.",
+            role: "MSW Graduate & Family Advocate",
+            category: "family",
+            advice: "Patience with your loved ones is vital. You cannot erase lost years overnight, but genuine humility and steady actions rebuild broken bonds.",
+            time_served: "6 years",
+            years_free: "3 years free",
+            tags: "Family Reunification, MSW Graduate, Education Grants",
+            avatar_url: null,
+            likes_count: 42,
+            created_at: new Date(Date.now() - 32 * 24 * 60 * 60 * 1000).toISOString()
+          },
+          {
+            id: crypto.randomUUID(),
+            user_id: null,
+            author_name: "Terrell 'T-Bone' Washington",
+            title: "Discharged from 10-Year Parole: The True Meaning of Being 'Off Paper'",
+            content: "After serving 15 inside and 10 on parole supervision, signing my final discharge certificate last month felt like exhaling for the first time in 25 years. I remember when getting a library card felt impossible. Now I have my CDL Class A, drive regional routes, and run weekend youth basketball clinics in Aurora.",
+            role: "CDL Class A Driver & Youth Coach",
+            category: "off_paper",
+            advice: "Never miss a curfew or check-in. The best revenge against the system is to give them zero reason to revoke you until you hold that final discharge in your hands.",
+            time_served: "15 years",
+            years_free: "10 years home · Off Paper",
+            tags: "CDL Class A, Full Discharge, Community Coach",
+            avatar_url: null,
+            likes_count: 56,
+            created_at: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString()
           }
         ];
         for (const seed of seeds) {
-          db.prepare("INSERT INTO testimonials (id, user_id, author_name, content, role, avatar_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(
-            seed.id, seed.user_id, seed.author_name, seed.content, seed.role, seed.avatar_url, seed.created_at
+          db.prepare("INSERT INTO testimonials (id, user_id, author_name, title, content, role, category, advice, time_served, years_free, tags, avatar_url, likes_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
+            seed.id, seed.user_id, seed.author_name, seed.title, seed.content, seed.role, seed.category, seed.advice, seed.time_served, seed.years_free, seed.tags, seed.avatar_url, seed.likes_count, seed.created_at
           );
         }
 
@@ -736,6 +1002,20 @@ async function startServer() {
             author_name: "Derrick Lane",
             content: "Having people like you who understand the struggle as a guide is a game-changer. Keep shining, Carlos!",
             created_offset: 5 * 60 * 60 * 1000
+          },
+          {
+            id: crypto.randomUUID(),
+            testimonial_name: "Maya Robinson",
+            author_name: "Elena Rostova",
+            content: "Brought tears to my eyes. As a mother fighting for custody post-release, this gives me immense strength.",
+            created_offset: 8 * 60 * 60 * 1000
+          },
+          {
+            id: crypto.randomUUID(),
+            testimonial_name: "Terrell 'T-Bone' Washington",
+            author_name: "Marcus Vance",
+            content: "Massive salute OG T-Bone! 10 years on paper is a marathon. Enjoy your freedom!",
+            created_offset: 12 * 60 * 60 * 1000
           }
         ];
         
@@ -750,6 +1030,28 @@ async function startServer() {
         }
 
         rows = db.prepare("SELECT * FROM testimonials ORDER BY created_at DESC").all() as any[];
+      } else {
+        // Backfill any missing title/category/advice on existing seed records
+        try {
+          db.prepare("UPDATE testimonials SET title = 'From 12 Years Inside to Lead Software Engineer & Homeowner', category = 'career', advice = 'Never conceal your past during interviews—own your story with calm confidence, show present mastery, and let your consistency do the talking.', time_served = '12 years', years_free = '4 years free', tags = 'Software Engineering, Coding Mentor, Homeowner' WHERE author_name = 'Marcus Vance' AND (title IS NULL OR title = '')").run();
+          db.prepare("UPDATE testimonials SET title = 'Rebuilding After Release: From Day-Labor to a 6-Figure Contracting Company', category = 'entrepreneurship', advice = 'Compliance today buys absolute freedom tomorrow. Keep every PO slip, pass every UA, and invest your pay into your own trade tools.', time_served = '7 years', years_free = '3 years free', tags = 'General Contractor, Employer, Off Paper' WHERE author_name = 'David Chen' AND (title IS NULL OR title = '')").run();
+          db.prepare("UPDATE testimonials SET title = 'Securing Stable Housing in Week 2 and Becoming a Lead Peer Navigator', category = 'housing', advice = 'Show up in person with your binder ready—ID, social security card, certificates, and recommendation letters. Preparation beats stigma every time.', time_served = '5 years', years_free = '2 years free', tags = 'Transitional Housing, Peer Navigator, Denver' WHERE author_name = 'Carlos Mendez' AND (title IS NULL OR title = '')").run();
+          
+          // Check if Maya and Terrell seeds need insertion
+          const hasMaya = db.prepare("SELECT id FROM testimonials WHERE author_name = 'Maya Robinson'").get();
+          if (!hasMaya) {
+            db.prepare("INSERT INTO testimonials (id, user_id, author_name, title, content, role, category, advice, time_served, years_free, tags, avatar_url, likes_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
+              crypto.randomUUID(), null, "Maya Robinson", "Rebuilding Trust with My Children & Completing My Master's in Social Work", "Being separated from my two daughters was the heaviest sentence. Upon release, I took it one afternoon at a time—no expectations, just consistent presence and showing up for homework. I utilized education grants, stayed focused on campus, and graduated last spring with honors. Today I advocate for family reunification policies.", "MSW Graduate & Family Advocate", "family", "Patience with your loved ones is vital. You cannot erase lost years overnight, but genuine humility and steady actions rebuild broken bonds.", "6 years", "3 years free", "Family Reunification, MSW Graduate, Education Grants", null, 42, new Date(Date.now() - 32 * 24 * 60 * 60 * 1000).toISOString()
+            );
+          }
+          const hasTerrell = db.prepare("SELECT id FROM testimonials WHERE author_name LIKE '%Washington%'").get();
+          if (!hasTerrell) {
+            db.prepare("INSERT INTO testimonials (id, user_id, author_name, title, content, role, category, advice, time_served, years_free, tags, avatar_url, likes_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
+              crypto.randomUUID(), null, "Terrell 'T-Bone' Washington", "Discharged from 10-Year Parole: The True Meaning of Being 'Off Paper'", "After serving 15 inside and 10 on parole supervision, signing my final discharge certificate last month felt like exhaling for the first time in 25 years. I remember when getting a library card felt impossible. Now I have my CDL Class A, drive regional routes, and run weekend youth basketball clinics in Aurora.", "CDL Class A Driver & Youth Coach", "off_paper", "Never miss a curfew or check-in. The best revenge against the system is to give them zero reason to revoke you until you hold that final discharge in your hands.", "15 years", "10 years home · Off Paper", "CDL Class A, Full Discharge, Community Coach", null, 56, new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString()
+            );
+          }
+          rows = db.prepare("SELECT * FROM testimonials ORDER BY created_at DESC").all() as any[];
+        } catch (e) {}
       }
 
       // Fetch and attach comments for each success story
@@ -768,21 +1070,51 @@ async function startServer() {
   });
 
   app.post("/api/testimonials", requireAuth, (req: any, res) => {
-    const { author_name, content, role } = req.body;
-    if (!content) {
-      return res.status(400).json({ error: "Content is required" });
+    const { author_name, title, content, role, category, advice, time_served, years_free, tags } = req.body;
+    if (!content || !content.trim()) {
+      return res.status(400).json({ error: "Story narrative content is required" });
     }
     try {
       const userObj = db.prepare("SELECT username, avatar_url FROM users WHERE id = ?").get(req.userId) as any;
-      const name = author_name || (userObj ? userObj.username : "Anonymous");
+      const name = author_name || (userObj ? userObj.username : "Anonymous Member");
       const avatar = userObj ? userObj.avatar_url : null;
-      const cleanRole = role || "Alumnus";
+      const cleanRole = role || "Re-entry Alumnus";
+      const cleanTitle = title || "My Journey Forward";
+      const cleanCategory = category || "general";
+      const cleanAdvice = advice || null;
+      const cleanTimeServed = time_served || null;
+      const cleanYearsFree = years_free || null;
+      const cleanTags = tags || null;
 
       const id = crypto.randomUUID();
-      db.prepare("INSERT INTO testimonials (id, user_id, author_name, content, role, avatar_url) VALUES (?, ?, ?, ?, ?, ?)").run(
-        id, req.userId, name, content, cleanRole, avatar
+      db.prepare("INSERT INTO testimonials (id, user_id, author_name, title, content, role, category, advice, time_served, years_free, tags, avatar_url, likes_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)").run(
+        id, req.userId, name, cleanTitle, content, cleanRole, cleanCategory, cleanAdvice, cleanTimeServed, cleanYearsFree, cleanTags, avatar
       );
       res.json({ success: true, id });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/testimonials/:id", requireAuth, (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const testimonial = db.prepare("SELECT id, user_id FROM testimonials WHERE id = ?").get(id) as any;
+      if (!testimonial) {
+        return res.status(404).json({ error: "Story not found" });
+      }
+
+      const user = db.prepare("SELECT role, is_admin FROM users WHERE id = ?").get(req.userId) as any;
+      const isAdminOrMod = user && (user.is_admin === 1 || ['admin', 'moderator', 'super_admin'].includes(user.role));
+      const isAuthor = testimonial.user_id === req.userId;
+
+      if (!isAuthor && !isAdminOrMod) {
+        return res.status(403).json({ error: "Not authorized to delete this story" });
+      }
+
+      db.prepare("DELETE FROM testimonial_comments WHERE testimonial_id = ?").run(id);
+      db.prepare("DELETE FROM testimonials WHERE id = ?").run(id);
+      res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -987,6 +1319,319 @@ async function startServer() {
     );
 
     res.json({ success: true });
+  });
+
+  // --- MENTORSHIP PROFILE SURVEY & MATCHMAKING ENDPOINTS ---
+  app.get("/api/mentorship/survey", requireAuth, (req: any, res) => {
+    try {
+      const row = db.prepare("SELECT * FROM mentorship_surveys WHERE user_id = ?").get(req.userId) as any;
+      if (!row) {
+        return res.json({ survey: null });
+      }
+      let interests = [];
+      let life_goals = [];
+      try {
+        interests = row.interests ? JSON.parse(row.interests) : [];
+      } catch (e) {
+        interests = row.interests ? row.interests.split(',').map((s: string) => s.trim()) : [];
+      }
+      try {
+        life_goals = row.life_goals ? JSON.parse(row.life_goals) : [];
+      } catch (e) {
+        life_goals = row.life_goals ? row.life_goals.split(',').map((s: string) => s.trim()) : [];
+      }
+
+      res.json({
+        survey: {
+          id: row.id,
+          user_id: row.user_id,
+          role_preference: row.role_preference,
+          interests,
+          life_goals,
+          cadence: row.cadence || 'weekly',
+          communication_style: row.communication_style || 'all',
+          experience_level: row.experience_level || 'early_reentry',
+          personal_statement: row.personal_statement || '',
+          availability_status: row.availability_status || 'actively_seeking',
+          updated_at: row.updated_at
+        }
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.put("/api/mentorship/survey", requireAuth, (req: any, res) => {
+    try {
+      const {
+        role_preference = 'both',
+        interests = [],
+        life_goals = [],
+        cadence = 'weekly',
+        communication_style = 'all',
+        experience_level = 'early_reentry',
+        personal_statement = '',
+        availability_status = 'actively_seeking'
+      } = req.body;
+
+      const interestsJson = JSON.stringify(Array.isArray(interests) ? interests : []);
+      const lifeGoalsJson = JSON.stringify(Array.isArray(life_goals) ? life_goals : []);
+
+      const existing = db.prepare("SELECT id FROM mentorship_surveys WHERE user_id = ?").get(req.userId) as any;
+      const id = existing ? existing.id : crypto.randomUUID();
+
+      if (existing) {
+        db.prepare(`
+          UPDATE mentorship_surveys
+          SET role_preference = ?, interests = ?, life_goals = ?, cadence = ?,
+              communication_style = ?, experience_level = ?, personal_statement = ?,
+              availability_status = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).run(
+          role_preference, interestsJson, lifeGoalsJson, cadence,
+          communication_style, experience_level, personal_statement,
+          availability_status, id
+        );
+      } else {
+        db.prepare(`
+          INSERT INTO mentorship_surveys
+          (id, user_id, role_preference, interests, life_goals, cadence, communication_style, experience_level, personal_statement, availability_status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          id, req.userId, role_preference, interestsJson, lifeGoalsJson, cadence,
+          communication_style, experience_level, personal_statement, availability_status
+        );
+      }
+
+      // Sync role into users table: if they are offering to mentor, ensure is_mentor = 1
+      const isMentorVal = (role_preference === 'mentor' || role_preference === 'both') ? 1 : 0;
+      
+      // Sync declared interests into users.interests comma list if provided
+      const interestsStr = Array.isArray(interests) && interests.length > 0 ? interests.join(', ') : null;
+
+      if (interestsStr) {
+        db.prepare("UPDATE users SET is_mentor = ?, interests = ? WHERE id = ?")
+          .run(isMentorVal, interestsStr, req.userId);
+      } else {
+        db.prepare("UPDATE users SET is_mentor = ? WHERE id = ?")
+          .run(isMentorVal, req.userId);
+      }
+
+      res.json({
+        success: true,
+        survey: {
+          id,
+          user_id: req.userId,
+          role_preference,
+          interests: Array.isArray(interests) ? interests : [],
+          life_goals: Array.isArray(life_goals) ? life_goals : [],
+          cadence,
+          communication_style,
+          experience_level,
+          personal_statement,
+          availability_status
+        }
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/mentorship/matches", requireAuth, (req: any, res) => {
+    try {
+      // Ensure seed data exists
+      seedCommunityData();
+
+      // Current user
+      const currentUser = db.prepare("SELECT * FROM users WHERE id = ?").get(req.userId) as any;
+      const currentSurveyRow = db.prepare("SELECT * FROM mentorship_surveys WHERE user_id = ?").get(req.userId) as any;
+
+      let userInterests: string[] = [];
+      let userLifeGoals: string[] = [];
+      let userRolePref = 'both';
+
+      if (currentSurveyRow) {
+        userRolePref = currentSurveyRow.role_preference || 'both';
+        try { userInterests = currentSurveyRow.interests ? JSON.parse(currentSurveyRow.interests) : []; } catch (e) {}
+        try { userLifeGoals = currentSurveyRow.life_goals ? JSON.parse(currentSurveyRow.life_goals) : []; } catch (e) {}
+      }
+      if (userInterests.length === 0 && currentUser?.interests) {
+        userInterests = currentUser.interests.split(',').map((s: string) => s.trim()).filter(Boolean);
+      }
+
+      // Fetch all candidate members
+      const candidates = db.prepare(`
+        SELECT u.id, u.username as name, u.facility as history, u.location, u.bio,
+               u.is_mentor, u.avatar_url, u.public_status, u.interests as user_interests,
+               u.looking_to_meet,
+               s.role_preference as survey_role, s.interests as survey_interests,
+               s.life_goals as survey_life_goals, s.cadence, s.communication_style,
+               s.experience_level, s.personal_statement, s.availability_status
+        FROM users u
+        LEFT JOIN mentorship_surveys s ON u.id = s.user_id
+        WHERE u.id != ? AND (u.is_suspended = 0 OR u.is_suspended IS NULL)
+      `).all(req.userId) as any[];
+
+      const normalize = (str: string) => (str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+      const matches = candidates.map(c => {
+        let candInterests: string[] = [];
+        let candGoals: string[] = [];
+        try { candInterests = c.survey_interests ? JSON.parse(c.survey_interests) : []; } catch (e) {}
+        try { candGoals = c.survey_life_goals ? JSON.parse(c.survey_life_goals) : []; } catch (e) {}
+
+        if (candInterests.length === 0 && c.user_interests) {
+          candInterests = c.user_interests.split(',').map((s: string) => s.trim()).filter(Boolean);
+        }
+
+        // Determine candidate role
+        let matchRole: 'mentor' | 'mentee' | 'peer' = 'peer';
+        if (c.survey_role === 'mentor') matchRole = 'mentor';
+        else if (c.survey_role === 'mentee') matchRole = 'mentee';
+        else if (c.is_mentor === 1) matchRole = 'mentor';
+        else matchRole = 'mentee';
+
+        // Shared Interests calculation
+        const sharedInterests: string[] = [];
+        userInterests.forEach(uInt => {
+          const uNorm = normalize(uInt);
+          const found = candInterests.find(cInt => {
+            const cNorm = normalize(cInt);
+            return cNorm.includes(uNorm) || uNorm.includes(cNorm);
+          });
+          if (found && !sharedInterests.includes(uInt)) {
+            sharedInterests.push(uInt);
+          }
+        });
+
+        // Check bio keywords if interests overlap is low
+        if (sharedInterests.length === 0 && c.bio) {
+          const bioLower = (c.bio || '').toLowerCase();
+          userInterests.forEach(uInt => {
+            if (bioLower.includes(uInt.toLowerCase()) && !sharedInterests.includes(uInt)) {
+              sharedInterests.push(uInt);
+            }
+          });
+        }
+
+        // Shared Life Goals calculation
+        const sharedLifeGoals: string[] = [];
+        userLifeGoals.forEach(uGoal => {
+          const uNorm = normalize(uGoal);
+          const found = candGoals.find(cGoal => {
+            const cNorm = normalize(cGoal);
+            return cNorm.includes(uNorm) || uNorm.includes(cNorm);
+          });
+          if (found && !sharedLifeGoals.includes(uGoal)) {
+            sharedLifeGoals.push(uGoal);
+          }
+        });
+
+        // Facility / history match
+        const myHist = (currentUser?.facility || '').toLowerCase();
+        const candHist = (c.history || '').toLowerCase();
+        let facilityMatch = false;
+        let matchedFacilityName = '';
+        if (myHist && candHist && myHist !== 'hidden' && candHist !== 'hidden') {
+          const knownFacilities = ['quentin', 'rikers', 'sing sing', 'attica', 'chino', 'folsom', 'bastrop', 'alcatraz', 'penitentiary', 'correctional'];
+          for (const f of knownFacilities) {
+            if (myHist.includes(f) && candHist.includes(f)) {
+              facilityMatch = true;
+              matchedFacilityName = f.charAt(0).toUpperCase() + f.slice(1);
+              break;
+            }
+          }
+        }
+
+        // Location match
+        const myLoc = (currentUser?.location || '').toLowerCase();
+        const candLoc = (c.location || '').toLowerCase();
+        let locationMatch = false;
+        if (myLoc && candLoc && myLoc !== 'hidden' && candLoc !== 'hidden') {
+          const myParts = myLoc.split(',').map((p: string) => p.trim());
+          const candParts = candLoc.split(',').map((p: string) => p.trim());
+          locationMatch = myParts.some((p: string) => p.length > 2 && candParts.includes(p));
+        }
+
+        // Scoring algorithm
+        let score = 42; // baseline community connection
+        score += Math.min(sharedInterests.length * 14, 30);
+        score += Math.min(sharedLifeGoals.length * 16, 32);
+
+        if (facilityMatch) score += 12;
+        if (locationMatch) score += 8;
+
+        // Role preference alignment
+        if (userRolePref === 'mentee' && matchRole === 'mentor') score += 10;
+        else if (userRolePref === 'mentor' && matchRole === 'mentee') score += 10;
+        else if (userRolePref === 'both') score += 6;
+
+        if (c.looking_to_meet) score += 4;
+
+        score = Math.min(Math.max(score, 45), 98);
+
+        // Build explanatory match reasons
+        const matchReasons: string[] = [];
+        if (sharedLifeGoals.length > 0) {
+          matchReasons.push(`Shared life goal: "${sharedLifeGoals[0]}"`);
+        }
+        if (sharedInterests.length > 0) {
+          matchReasons.push(`Common interests: ${sharedInterests.slice(0, 3).join(', ')}`);
+        }
+        if (facilityMatch) {
+          matchReasons.push(`Shared facility experience at ${matchedFacilityName || c.history}`);
+        }
+        if (locationMatch) {
+          matchReasons.push(`Local peer alignment in ${c.location}`);
+        }
+        if (c.cadence && currentSurveyRow?.cadence && c.cadence === currentSurveyRow.cadence) {
+          matchReasons.push(`Compatible check-in pace (${c.cadence})`);
+        }
+        if (matchReasons.length === 0) {
+          matchReasons.push('Alumni network support & transitional peer guidance');
+        }
+
+        return {
+          user: {
+            id: c.id,
+            name: c.name,
+            history: c.history,
+            location: c.location,
+            bio: c.bio,
+            is_mentor: c.is_mentor,
+            avatar_url: c.avatar_url,
+            public_status: c.public_status,
+            interests: c.user_interests,
+            looking_to_meet: !!c.looking_to_meet
+          },
+          survey: c.survey_role ? {
+            role_preference: c.survey_role,
+            interests: candInterests,
+            life_goals: candGoals,
+            cadence: c.cadence,
+            communication_style: c.communication_style,
+            experience_level: c.experience_level,
+            personal_statement: c.personal_statement,
+            availability_status: c.availability_status
+          } : null,
+          matchScore: score,
+          matchRole,
+          sharedInterests,
+          sharedLifeGoals,
+          matchReasons,
+          facilityMatch,
+          locationMatch
+        };
+      });
+
+      // Sort desc by score
+      matches.sort((a: any, b: any) => b.matchScore - a.matchScore);
+
+      res.json(matches);
+    } catch (err: any) {
+      console.error('Error calculating mentorship matches:', err);
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // --- VIDEO CHAT ENDPOINTS ---
@@ -1371,15 +2016,16 @@ async function startServer() {
   // Global Search Route
   app.get("/api/search", requireAuth, (req: any, res) => {
     const q = req.query.q;
-    if (!q || typeof q !== 'string') return res.json({ users: [], jobs: [], housing: [], posts: [] });
+    if (!q || typeof q !== 'string') return res.json({ users: [], jobs: [], housing: [], posts: [], stories: [] });
     
     const likeQ = `%${q}%`;
     const users = db.prepare("SELECT id, username as name, bio, location FROM users WHERE username LIKE ? OR bio LIKE ? OR location LIKE ? LIMIT 10").all(likeQ, likeQ, likeQ);
     const jobs = db.prepare("SELECT id, title, company, location FROM jobs WHERE title LIKE ? OR company LIKE ? OR description LIKE ? LIMIT 10").all(likeQ, likeQ, likeQ);
     const housing = db.prepare("SELECT id, name, type, location FROM housing WHERE name LIKE ? OR description LIKE ? OR location LIKE ? LIMIT 10").all(likeQ, likeQ, likeQ);
     const posts = db.prepare("SELECT id, title, content, category FROM threads WHERE title LIKE ? OR content LIKE ? LIMIT 10").all(likeQ, likeQ);
+    const stories = db.prepare("SELECT id, title, author_name, role, content, category, tags, time_served, years_free FROM testimonials WHERE title LIKE ? OR content LIKE ? OR author_name LIKE ? OR tags LIKE ? LIMIT 10").all(likeQ, likeQ, likeQ, likeQ);
     
-    res.json({ users, jobs, housing, posts });
+    res.json({ users, jobs, housing, posts, stories });
   });
 
   // Admin Routes

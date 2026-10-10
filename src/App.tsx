@@ -58,6 +58,7 @@ type Tab = 'yard' | 'kites' | 'resources' | 'tools' | 'forum' | 'mentorship' | '
 function MainApp() {
   const { user, token, logout, isLoading } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('yard');
+  const [forumSubTab, setForumSubTab] = useState<'discussions' | 'stories'>('discussions');
   const [opportunitiesSubTab, setOpportunitiesSubTab] = useState<'jobs' | 'housing' | 'tracker'>('jobs');
   const [resourcesShowAddPO, setResourcesShowAddPO] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -156,7 +157,13 @@ function MainApp() {
     switch (activeTab) {
       case 'yard': return <TheYard />;
       case 'opportunities': return <Opportunities initialTab={opportunitiesSubTab} />;
-      case 'forum': return <Forum />;
+      case 'forum': return (
+        <Forum 
+          initialSubSection={forumSubTab} 
+          onNavigateToKites={(userId, userName) => setActiveTab('kites')} 
+          onNavigateTab={(tab) => setActiveTab(tab as Tab)} 
+        />
+      );
       case 'kites': return <Kites onNavigate={(tab: Tab) => setActiveTab(tab)} />;
       case 'mentorship': return <MentorshipTab />;
       case 'vault': return <Vault />;
@@ -430,7 +437,12 @@ function MainApp() {
       {isSearchOpen && (
         <GlobalSearch 
           onClose={() => setIsSearchOpen(false)} 
-          onNavigate={(tab) => setActiveTab(tab as Tab)} 
+          onNavigate={(tab, subTab) => {
+            if (subTab === 'stories' || subTab === 'discussions') {
+              setForumSubTab(subTab);
+            }
+            setActiveTab(tab as Tab);
+          }} 
         />
       )}
 
@@ -447,6 +459,7 @@ function MainApp() {
           <div>
             <h4 className="text-xs uppercase tracking-widest opacity-40 mb-4">Quick Links</h4>
             <ul className="flex flex-col gap-2 text-sm">
+              <li><button type="button" onClick={() => { setForumSubTab('stories'); setActiveTab('forum'); }} className="hover:underline focus-visible:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60 text-left font-medium text-amber-200/90">Success Stories</button></li>
               <li><button type="button" onClick={() => setActiveTab('mental-health')} className="hover:underline focus-visible:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60 text-left">Mental Health Support</button></li>
               <li><button type="button" onClick={() => { setResourcesShowAddPO(false); setActiveTab('resources'); }} className="hover:underline focus-visible:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60 text-left">Parole Resources</button></li>
               <li><button type="button" onClick={() => setActiveTab('tools')} className="hover:underline focus-visible:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60 text-left">Legal Aid</button></li>

@@ -158,10 +158,42 @@ export interface Testimonial {
   id: string;
   user_id: string | null;
   author_name: string;
+  title?: string;
   content: string;
+  category?: 'career' | 'entrepreneurship' | 'housing' | 'education' | 'off_paper' | 'family' | 'mindset' | 'general' | string;
+  advice?: string;
+  time_served?: string;
+  years_free?: string;
+  tags?: string;
   role?: string;
   avatar_url?: string;
   likes_count?: number;
   comments?: TestimonialComment[];
   created_at?: string;
+}
+
+export interface MentorshipSurvey {
+  id?: string;
+  user_id?: string;
+  role_preference: 'mentor' | 'mentee' | 'both';
+  interests: string[];
+  life_goals: string[];
+  cadence: 'weekly' | 'biweekly' | 'monthly' | 'flexible';
+  communication_style: 'text_kites' | 'video_calls' | 'voice_calls' | 'all';
+  experience_level: 'early_reentry' | 'established' | 'veteran_alumni';
+  personal_statement?: string;
+  availability_status: 'actively_seeking' | 'open_to_matching' | 'paused';
+  updated_at?: string;
+}
+
+export interface MentorshipMatch {
+  user: User;
+  survey?: MentorshipSurvey | null;
+  matchScore: number;
+  matchRole: 'mentor' | 'mentee' | 'peer';
+  sharedInterests: string[];
+  sharedLifeGoals: string[];
+  matchReasons: string[];
+  facilityMatch: boolean;
+  locationMatch: boolean;
 }

@@ -126,12 +126,34 @@
         "timestamp": { "type": "string" }
       },
       "required": ["id", "user_id", "type", "content"]
+    },
+    "MentorshipSurvey": {
+      "title": "MentorshipSurvey",
+      "description": "User profile survey for mentor and mentee matchmaking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "role_preference": { "type": "string" },
+        "interests": { "type": "array" },
+        "life_goals": { "type": "array" },
+        "cadence": { "type": "string" },
+        "communication_style": { "type": "string" },
+        "experience_level": { "type": "string" },
+        "personal_statement": { "type": "string" },
+        "availability_status": { "type": "string" }
+      },
+      "required": ["id", "user_id", "role_preference"]
     }
   },
   "firestore": {
     "users/{userId}": {
       "schema": "User",
       "description": "User profiles"
+    },
+    "mentorship_surveys/{surveyId}": {
+      "schema": "MentorshipSurvey",
+      "description": "Profile surveys for mentor and mentee matching"
     },
     "threads/{threadId}": {
       "schema": "Thread",

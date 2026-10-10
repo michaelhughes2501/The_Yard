@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../AuthContext';
-import { Search, X, Users, Briefcase, Home, MessageSquare } from 'lucide-react';
+import { Search, X, Users, Briefcase, Home, MessageSquare, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-export default function GlobalSearch({ onClose, onNavigate }: { onClose: () => void, onNavigate: (tab: string) => void }) {
+export default function GlobalSearch({ onClose, onNavigate }: { onClose: () => void, onNavigate: (tab: string, subTab?: string) => void }) {
   const { token } = useAuth();
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<any>({ users: [], jobs: [], housing: [], posts: [] });
+  const [results, setResults] = useState<any>({ users: [], jobs: [], housing: [], posts: [], stories: [] });
   const [isLoading, setIsLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -16,7 +16,7 @@ export default function GlobalSearch({ onClose, onNavigate }: { onClose: () => v
 
   useEffect(() => {
     if (!query.trim()) {
-      setResults({ users: [], jobs: [], housing: [], posts: [] });
+      setResults({ users: [], jobs: [], housing: [], posts: [], stories: [] });
       return;
     }
 
@@ -40,7 +40,7 @@ export default function GlobalSearch({ onClose, onNavigate }: { onClose: () => v
     return () => clearTimeout(timer);
   }, [query, token]);
 
-  const hasResults = results.users.length > 0 || results.jobs.length > 0 || results.housing.length > 0 || results.posts.length > 0;
+  const hasResults = results.users.length > 0 || results.jobs.length > 0 || results.housing.length > 0 || results.posts.length > 0 || (results.stories && results.stories.length > 0);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-start justify-center pt-20 p-4 bg-black/60 backdrop-blur-sm">
@@ -146,7 +146,7 @@ export default function GlobalSearch({ onClose, onNavigate }: { onClose: () => v
                     {results.posts.map((p: any) => (
                       <button 
                         key={p.id}
-                        onClick={() => { onNavigate('forum'); onClose(); }}
+                        onClick={() => { onNavigate('forum', 'discussions'); onClose(); }}
                         className="w-full bg-white border border-[#141414] p-4 text-left hover:bg-[#141414] hover:text-[#E4E3E0] transition-colors group"
                       >
                         <div className="flex justify-between items-start mb-2">
@@ -156,6 +156,34 @@ export default function GlobalSearch({ onClose, onNavigate }: { onClose: () => v
                           </span>
                         </div>
                         <p className="text-sm line-clamp-2 opacity-80 group-hover:opacity-100">{p.content}</p>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {results.stories && results.stories.length > 0 && (
+                <section>
+                  <h3 className="text-xs uppercase tracking-widest font-bold mb-4 flex items-center gap-2 opacity-60 border-b border-[#141414]/10 pb-2">
+                    <Sparkles size={14} className="text-amber-700" /> Success Stories & Journeys
+                  </h3>
+                  <div className="space-y-4">
+                    {results.stories.map((s: any) => (
+                      <button 
+                        key={s.id}
+                        onClick={() => { onNavigate('forum', 'stories'); onClose(); }}
+                        className="w-full bg-white border border-[#141414] p-4 text-left hover:bg-[#141414] hover:text-[#E4E3E0] transition-colors group"
+                      >
+                        <div className="flex justify-between items-start mb-1.5">
+                          <div>
+                            <h4 className="font-bold text-lg font-serif italic">{s.title || 'Reintegration Journey'}</h4>
+                            <p className="text-xs opacity-60 font-mono mt-0.5">{s.author_name} {s.role ? `· ${s.role}` : ''}</p>
+                          </div>
+                          <span className="text-[10px] uppercase tracking-widest opacity-60 bg-[#141414]/10 group-hover:bg-white/20 px-2 py-1 font-mono">
+                            {s.category || 'Story'}
+                          </span>
+                        </div>
+                        <p className="text-sm line-clamp-2 opacity-80 group-hover:opacity-100">{s.content}</p>
                       </button>
                     ))}
                   </div>

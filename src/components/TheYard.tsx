@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Search, UserPlus, MapPin, History, UserCheck, Sparkles, Quote, ChevronLeft, ChevronRight, Plus, X, Heart, MessageSquare, Share2, Activity, Briefcase, Home, Award, CheckCircle, TrendingUp, Compass } from 'lucide-react';
+import { Search, UserPlus, MapPin, History, UserCheck, Sparkles, Quote, ChevronLeft, ChevronRight, Plus, X, Heart, MessageSquare, Share2, Activity, Briefcase, Home, Award, CheckCircle, TrendingUp, Compass, BookOpen, Target, HeartHandshake, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../AuthContext';
-import { User, Testimonial, Job, Housing } from '../types';
+import { User, Testimonial, Job, Housing, MentorshipSurvey, MentorshipMatch } from '../types';
 import { calculateRelevanceScore } from '../utils/searchUtils';
+import MentorshipSurveyModal from './MentorshipSurveyModal';
 
 export interface ActivityItem {
   id: string;
@@ -1085,12 +1086,23 @@ export default function TheYard() {
             </span>
             <h3 className="text-3xl font-serif italic">Community Milestones</h3>
           </div>
-          <button
-            onClick={() => setShowStoryModal(true)}
-            className="px-4 py-2 border border-[#E4E3E0]/30 hover:border-[#E4E3E0] text-xs font-bold uppercase tracking-widest font-mono hover:bg-white hover:text-[#141414] transition-all flex items-center gap-2 cursor-pointer"
-          >
-            <Plus size={14} /> + Share Your Story
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent('changeTab', { detail: 'forum' }));
+              }}
+              className="px-3.5 py-2 border border-[#E4E3E0]/20 hover:border-[#E4E3E0] text-xs font-mono uppercase tracking-widest text-[#E4E3E0]/80 hover:text-white transition-all flex items-center gap-1.5"
+            >
+              <BookOpen size={13} /> View All Stories
+            </button>
+            <button
+              onClick={() => setShowStoryModal(true)}
+              className="px-4 py-2 border border-[#E4E3E0]/30 hover:border-[#E4E3E0] text-xs font-bold uppercase tracking-widest font-mono hover:bg-white hover:text-[#141414] transition-all flex items-center gap-2 cursor-pointer"
+            >
+              <Plus size={14} /> + Share Your Story
+            </button>
+          </div>
         </div>
 
         {/* Dashboard Grid Layout */}

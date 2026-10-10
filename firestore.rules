@@ -143,6 +143,21 @@ service cloud.firestore {
         && (!data.keys().hasAny(['timestamp']) || (data.timestamp is string && data.timestamp.size() <= 50));
     }
 
+    function isValidMentorshipSurvey(data) {
+      return data.keys().hasAll(['id', 'user_id', 'role_preference'])
+        && data.keys().size() <= 12
+        && data.id is string && data.id.size() <= 128
+        && data.user_id is string && data.user_id.size() <= 128
+        && data.role_preference is string && data.role_preference.size() <= 30
+        && (!data.keys().hasAny(['interests']) || data.interests is list)
+        && (!data.keys().hasAny(['life_goals']) || data.life_goals is list)
+        && (!data.keys().hasAny(['cadence']) || (data.cadence is string && data.cadence.size() <= 50))
+        && (!data.keys().hasAny(['communication_style']) || (data.communication_style is string && data.communication_style.size() <= 50))
+        && (!data.keys().hasAny(['experience_level']) || (data.experience_level is string && data.experience_level.size() <= 50))
+        && (!data.keys().hasAny(['personal_statement']) || (data.personal_statement is string && data.personal_statement.size() <= 2000))
+        && (!data.keys().hasAny(['availability_status']) || (data.availability_status is string && data.availability_status.size() <= 50));
+    }
+
     // --- COLLECTION RULE GROUPS ---
 
     // USERS COLLECTION (Pillar 6: Split authentication / profile isolation)
@@ -239,6 +254,14 @@ service cloud.firestore {
       allow create: if isSignedIn() && isValidNotification(incoming()); // Any participant or system can create a notification for another user
       allow update: if isSignedIn() && isValidNotification(incoming()) && isOwner(existing().user_id) && incoming().diff(existing()).affectedKeys().hasOnly(['is_read']);
       allow delete: if isSignedIn() && isOwner(existing().user_id) || isAdmin();
+    }
+
+    // MENTORSHIP SURVEYS (Pillar 6: User profile survey permissions)
+    match /mentorship_surveys/{surveyId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() && isValidMentorshipSurvey(incoming()) && isOwner(incoming().user_id);
+      allow update: if isSignedIn() && isValidMentorshipSurvey(incoming()) && isOwner(existing().user_id) && incoming().user_id == existing().user_id;
+      allow delete: if isSignedIn() && (isOwner(existing().user_id) || isAdmin());
     }
   }
 }
