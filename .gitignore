@@ -11,3 +11,8 @@ coverage/
 data/
 *.db
 
+
+# Local secrets
+.env
+.env.local
+.env*.local
