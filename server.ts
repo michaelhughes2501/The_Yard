@@ -271,6 +271,33 @@ db.exec(`
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(resource_id, user_id)
   );
+
+  CREATE TABLE IF NOT EXISTS resource_bookmarks (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    resource_id TEXT NOT NULL,
+    resource_type TEXT NOT NULL,
+    resource_title TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, resource_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS mentorship_reviews (
+    id TEXT PRIMARY KEY,
+    mentor_id TEXT NOT NULL,
+    reviewer_id TEXT NOT NULL,
+    reviewer_name TEXT NOT NULL,
+    rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
+    communication_rating INTEGER DEFAULT 5,
+    reentry_helpfulness INTEGER DEFAULT 5,
+    would_recommend INTEGER DEFAULT 1,
+    highlights TEXT,
+    review_text TEXT NOT NULL,
+    is_anonymous INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(mentor_id, reviewer_id)
+  );
 `);
 
 // Seed initial peer-verified ratings for core community resources if empty
@@ -2519,6 +2546,313 @@ async function startServer() {
   });
 
   // =========================================================================
+  // RESOURCE BOOKMARKS API
+  // =========================================================================
+  app.get("/api/resources/bookmarks", requireAuth, (req: any, res) => {
+    try {
+      const rows = db.prepare(
+        "SELECT id, resource_id, resource_type, resource_title, created_at FROM resource_bookmarks WHERE user_id = ? ORDER BY created_at DESC"
+      ).all(req.userId);
+      res.json(rows);
+    } catch (err: any) {
+      console.error("Error fetching resource bookmarks:", err);
+      res.status(500).json({ error: "Failed to load resource bookmarks" });
+    }
+  });
+
+  app.post("/api/resources/bookmarks/toggle", requireAuth, (req: any, res) => {
+    try {
+      const resourceId = String(req.body.resource_id || "").trim();
+      const resourceType = String(req.body.resource_type || "Resource").trim();
+      const resourceTitle = String(req.body.resource_title || "Saved Resource").trim();
+
+      if (!resourceId) {
+        return res.status(400).json({ error: "Missing resource_id" });
+      }
+
+      const existing = db.prepare(
+        "SELECT id FROM resource_bookmarks WHERE user_id = ? AND resource_id = ?"
+      ).get(req.userId, resourceId) as any;
+
+      let bookmarked = false;
+      if (existing) {
+        db.prepare("DELETE FROM resource_bookmarks WHERE id = ?").run(existing.id);
+        bookmarked = false;
+      } else {
+        db.prepare(
+          "INSERT INTO resource_bookmarks (id, user_id, resource_id, resource_type, resource_title) VALUES (?, ?, ?, ?, ?)"
+        ).run(crypto.randomUUID(), req.userId, resourceId, resourceType, resourceTitle);
+        bookmarked = true;
+      }
+
+      const bookmarks = db.prepare(
+        "SELECT id, resource_id, resource_type, resource_title, created_at FROM resource_bookmarks WHERE user_id = ? ORDER BY created_at DESC"
+      ).all(req.userId);
+
+      res.json({ success: true, bookmarked, bookmarks });
+    } catch (err: any) {
+      console.error("Error toggling resource bookmark:", err);
+      res.status(500).json({ error: "Failed to update bookmark" });
+    }
+  });
+
+  // =========================================================================
+  // MENTORSHIP REVIEWS API
+  // =========================================================================
+  const ensureSeededMentorshipReviews = () => {
+    try {
+      const countRow = db.prepare("SELECT COUNT(*) as count FROM mentorship_reviews").get() as any;
+      if (countRow && countRow.count > 0) return;
+
+      const mentors = db.prepare("SELECT id, username FROM users WHERE is_mentor = 1 LIMIT 6").all() as any[];
+      if (!mentors || mentors.length === 0) return;
+
+      const sampleTemplates = [
+        {
+          reviewer_id: "seed-rev-1",
+          reviewer_name: "Darius K.",
+          rating: 5,
+          communication_rating: 5,
+          reentry_helpfulness: 5,
+          would_recommend: 1,
+          highlights: ["Parole & RMOMS Guidance", "Career & Resume Prep", "Always Responsive"],
+          review_text: "Walked me through my first 90 days home step-by-step. Helped me prep for my fair-chance trade interview and never missed a Sunday check-in."
+        },
+        {
+          reviewer_id: "seed-rev-2",
+          reviewer_name: "Elena R.",
+          rating: 5,
+          communication_rating: 5,
+          reentry_helpfulness: 5,
+          would_recommend: 1,
+          highlights: ["Lived Experience", "Accountability & Mindset", "Housing & Stability Tips"],
+          review_text: "Zero judgment and real practical advice. Shared exact scripts for talking to landlords and helped me organize my release binder."
+        },
+        {
+          reviewer_id: "seed-rev-3",
+          reviewer_name: "Terrell M.",
+          rating: 4,
+          communication_rating: 4,
+          reentry_helpfulness: 5,
+          would_recommend: 1,
+          highlights: ["Career & Resume Prep", "Lived Experience"],
+          review_text: "Solid straight talk when I needed it most. Connecting through our shared milestone checklist kept me focused every week."
+        }
+      ];
+
+      const insertStmt = db.prepare(`
+        INSERT OR IGNORE INTO mentorship_reviews
+        (id, mentor_id, reviewer_id, reviewer_name, rating, communication_rating, reentry_helpfulness, would_recommend, highlights, review_text, is_anonymous)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+      `);
+
+      mentors.forEach((mentor, idx) => {
+        const primary = sampleTemplates[idx % sampleTemplates.length];
+        const secondary = sampleTemplates[(idx + 1) % sampleTemplates.length];
+        insertStmt.run(
+          crypto.randomUUID(),
+          mentor.id,
+          `${primary.reviewer_id}-${idx}`,
+          primary.reviewer_name,
+          primary.rating,
+          primary.communication_rating,
+          primary.reentry_helpfulness,
+          primary.would_recommend,
+          JSON.stringify(primary.highlights),
+          primary.review_text
+        );
+        if (idx < 3) {
+          insertStmt.run(
+            crypto.randomUUID(),
+            mentor.id,
+            `${secondary.reviewer_id}-b-${idx}`,
+            secondary.reviewer_name,
+            secondary.rating,
+            secondary.communication_rating,
+            secondary.reentry_helpfulness,
+            secondary.would_recommend,
+            JSON.stringify(secondary.highlights),
+            secondary.review_text
+          );
+        }
+      });
+    } catch (e) {
+      console.warn("Could not seed initial mentorship reviews:", e);
+    }
+  };
+
+  const buildMentorReviewSummary = (mentorId: string, currentUserId?: string | null) => {
+    const rows = db.prepare(
+      "SELECT * FROM mentorship_reviews WHERE mentor_id = ? ORDER BY updated_at DESC"
+    ).all(mentorId) as any[];
+
+    const mapRow = (r: any) => {
+      let highlights: string[] = [];
+      try {
+        highlights = r.highlights ? JSON.parse(r.highlights) : [];
+      } catch {
+        highlights = [];
+      }
+      const isAnon = r.is_anonymous === 1;
+      return {
+        id: r.id,
+        mentor_id: r.mentor_id,
+        reviewer_id: r.reviewer_id,
+        reviewer_name: isAnon && r.reviewer_id !== currentUserId ? "Anonymous Mentee" : r.reviewer_name,
+        rating: Number(r.rating),
+        communication_rating: Number(r.communication_rating || 5),
+        reentry_helpfulness: Number(r.reentry_helpfulness || 5),
+        would_recommend: r.would_recommend === 1,
+        highlights,
+        review_text: r.review_text,
+        is_anonymous: isAnon,
+        updated_at: r.updated_at
+      };
+    };
+
+    const mapped = rows.map(mapRow);
+    const total_reviews = mapped.length;
+    const avg = (vals: number[]) =>
+      vals.length > 0 ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : 0;
+
+    const recommendCount = mapped.filter(r => r.would_recommend).length;
+    const userReviewRow = currentUserId ? mapped.find(r => r.reviewer_id === currentUserId) || null : null;
+
+    return {
+      mentor_id: mentorId,
+      average_rating: avg(mapped.map(r => r.rating)),
+      total_reviews,
+      recommend_percent: total_reviews > 0 ? Math.round((recommendCount / total_reviews) * 100) : 0,
+      avg_communication: avg(mapped.map(r => r.communication_rating)),
+      avg_reentry_helpfulness: avg(mapped.map(r => r.reentry_helpfulness)),
+      user_review: userReviewRow,
+      reviews: mapped
+    };
+  };
+
+  app.get("/api/mentorship/reviews", (req: any, res) => {
+    try {
+      ensureSeededMentorshipReviews();
+
+      let currentUserId: string | null = null;
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        const token = authHeader.split(" ")[1];
+        const session = db.prepare("SELECT user_id FROM sessions WHERE token = ?").get(token) as any;
+        if (session) currentUserId = session.user_id;
+      }
+
+      const distinctMentors = db.prepare("SELECT DISTINCT mentor_id FROM mentorship_reviews").all() as any[];
+      const map: Record<string, any> = {};
+      for (const row of distinctMentors) {
+        map[row.mentor_id] = buildMentorReviewSummary(row.mentor_id, currentUserId);
+      }
+      res.json(map);
+    } catch (err: any) {
+      console.error("Error fetching mentorship reviews:", err);
+      res.status(500).json({ error: "Failed to load mentorship reviews" });
+    }
+  });
+
+  app.post("/api/mentorship/reviews", requireAuth, (req: any, res) => {
+    try {
+      const mentorId = String(req.body.mentor_id || "").trim();
+      const rating = Number(req.body.rating);
+      const communicationRating = Math.min(5, Math.max(1, Number(req.body.communication_rating || rating)));
+      const reentryHelpfulness = Math.min(5, Math.max(1, Number(req.body.reentry_helpfulness || rating)));
+      const wouldRecommend = req.body.would_recommend === false ? 0 : 1;
+      const isAnonymous = req.body.is_anonymous ? 1 : 0;
+      const highlightsArr = Array.isArray(req.body.highlights) ? req.body.highlights.slice(0, 6) : [];
+      const reviewText = String(req.body.review_text || "").trim().slice(0, 1000);
+
+      if (!mentorId) return res.status(400).json({ error: "Mentor ID is required." });
+      if (mentorId === req.userId) return res.status(400).json({ error: "You cannot review yourself." });
+      if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+        return res.status(400).json({ error: "Rating must be between 1 and 5 stars." });
+      }
+      if (!reviewText) return res.status(400).json({ error: "Please share a short review note." });
+
+      const userRow = db.prepare("SELECT username FROM users WHERE id = ?").get(req.userId) as any;
+      const reviewerName = userRow?.username || "Community Member";
+
+      const existing = db.prepare(
+        "SELECT id FROM mentorship_reviews WHERE mentor_id = ? AND reviewer_id = ?"
+      ).get(mentorId, req.userId) as any;
+
+      if (existing) {
+        db.prepare(`
+          UPDATE mentorship_reviews
+          SET rating = ?, communication_rating = ?, reentry_helpfulness = ?, would_recommend = ?,
+              highlights = ?, review_text = ?, is_anonymous = ?, reviewer_name = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).run(
+          rating,
+          communicationRating,
+          reentryHelpfulness,
+          wouldRecommend,
+          JSON.stringify(highlightsArr),
+          reviewText,
+          isAnonymous,
+          reviewerName,
+          existing.id
+        );
+      } else {
+        db.prepare(`
+          INSERT INTO mentorship_reviews
+          (id, mentor_id, reviewer_id, reviewer_name, rating, communication_rating, reentry_helpfulness, would_recommend, highlights, review_text, is_anonymous)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          crypto.randomUUID(),
+          mentorId,
+          req.userId,
+          reviewerName,
+          rating,
+          communicationRating,
+          reentryHelpfulness,
+          wouldRecommend,
+          JSON.stringify(highlightsArr),
+          reviewText,
+          isAnonymous
+        );
+
+        // Notify the mentor of their new review
+        const displayReviewer = isAnonymous ? "An anonymous mentee" : reviewerName;
+        db.prepare(
+          "INSERT INTO notifications (id, user_id, type, content, link) VALUES (?, ?, 'mentorship_review', ?, 'mentorship')"
+        ).run(
+          crypto.randomUUID(),
+          mentorId,
+          `${displayReviewer} left you a ${rating}-star mentorship review.`
+        );
+      }
+
+      const summary = buildMentorReviewSummary(mentorId, req.userId);
+      res.json({ success: true, summary });
+    } catch (err: any) {
+      console.error("Error submitting mentorship review:", err);
+      res.status(500).json({ error: "Failed to save mentorship review" });
+    }
+  });
+
+  app.delete("/api/mentorship/reviews/:reviewId", requireAuth, (req: any, res) => {
+    try {
+      const review = db.prepare(
+        "SELECT id, mentor_id, reviewer_id FROM mentorship_reviews WHERE id = ?"
+      ).get(req.params.reviewId) as any;
+      if (!review) return res.status(404).json({ error: "Review not found" });
+      if (review.reviewer_id !== req.userId) {
+        return res.status(403).json({ error: "You can only delete your own review" });
+      }
+      db.prepare("DELETE FROM mentorship_reviews WHERE id = ?").run(review.id);
+      const summary = buildMentorReviewSummary(review.mentor_id, req.userId);
+      res.json({ success: true, mentor_id: review.mentor_id, summary });
+    } catch (err: any) {
+      console.error("Error deleting mentorship review:", err);
+      res.status(500).json({ error: "Failed to delete mentorship review" });
+    }
+  });
+
+  // =========================================================================
   // SERVER-SIDE GEMINI AI ROUTES (AI Guide Bot + Resources AI Helpers)
   // =========================================================================
   const WEBSITE_GUIDE_SYSTEM_INSTRUCTION = `You are "Yard Guide AI", a friendly, intelligent, Gemini-style AI assistant built right into this web platform ("Wayfare Kitchen · The Yard Network").
@@ -2531,9 +2865,9 @@ Your three core roles:
 Complete Website Map (Tabs available in the left sidebar):
 - \`expedition\` (**Expedition profile**): Taste & member preference controls, heat/adventure level, favorite cuisines, holiday delivery schedule, and account plan.
 - \`yard\` (**The Yard**): Community directory & social hub where formerly incarcerated peers connect, signal availability to meet ("yard" status), send private messages ("kites"), and complete a Mentorship Profile Survey.
-- \`mentorship\` (**Mentorship**): Take the 3-step Mentorship Matching Questionnaire (Shared Lived Experiences, Professional Goals, Check-in Cadence), browse match scores, connect anonymously or directly, and track **Shared Mentorship Milestones** with visual progress bars across 4 pillars (Re-Entry, Career, Legal, Wellness).
+- \`mentorship\` (**Mentorship**): Take the 3-step Mentorship Matching Questionnaire (Shared Lived Experiences, Professional Goals, Check-in Cadence), browse match scores, connect anonymously or directly, read & write **Mentorship Reviews** (5-star ratings, communication & re-entry helpfulness scores, and peer testimonials), and track **Shared Mentorship Milestones** with visual progress bars across 4 pillars (Re-Entry, Career, Legal, Wellness).
 - \`kites\` (**Kites**): Private, secure peer-to-peer messaging ("kite" = private message, "yard" = meeting place; includes optional slang tooltips for clarity).
-- \`resources\` (**Resources**): 4-pillar command hub featuring: (1) Mental Health Support & Self-Help Workbooks, (2) 50-State Court Dockets & DOC Locator, (3) Interactive Statutory Sentence Estimator, (4) Parole Officer Contacts & RMOMS Urine Analysis Check-In Guide, plus a **5-Star Community Reliability Rating System** where users rate and verify local services, and a Nearby Re-Entry Services Map.
+- \`resources\` (**Resources**): 4-pillar command hub featuring: (1) Mental Health Support & Self-Help Workbooks, (2) 50-State Court Dockets & DOC Locator, (3) Interactive Statutory Sentence Estimator, (4) Parole Officer Contacts & RMOMS Urine Analysis Check-In Guide, plus **Resource Bookmarks** (save any service, workbook, hotline, or court docket for one-tap access), a **5-Star Community Reliability Rating System** where users rate and verify local services, and a Nearby Re-Entry Services Map.
 - \`forum\` (**Forum**): Community Discussions, Community Guidelines modal, and the **Success Stories** section where formerly incarcerated individuals post and celebrate inspirational re-entry journeys.
 - \`opportunities\` (**Opportunities**): Felony-friendly Jobs board, release-approved Housing directory, and personal Job Application Tracker.
 - \`tools\` (**Legal Tools**): Quick court docket lookup and statutory sentence reference tools.

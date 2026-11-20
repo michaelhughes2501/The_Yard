@@ -231,3 +231,38 @@ export interface ResourceRatingSummary {
   reviews: ResourceRatingReview[];
 }
 
+export interface ResourceBookmark {
+  id: string;
+  resource_id: string;
+  resource_type: string;
+  resource_title: string;
+  created_at: string;
+}
+
+export interface MentorReview {
+  id: string;
+  mentor_id: string;
+  reviewer_id: string;
+  reviewer_name: string;
+  rating: number;
+  communication_rating: number;
+  reentry_helpfulness: number;
+  would_recommend: boolean;
+  highlights: string[];
+  review_text: string;
+  is_anonymous: boolean;
+  updated_at: string;
+}
+
+export interface MentorReviewSummary {
+  mentor_id: string;
+  average_rating: number;
+  total_reviews: number;
+  recommend_percent: number;
+  avg_communication: number;
+  avg_reentry_helpfulness: number;
+  user_review: MentorReview | null;
+  reviews: MentorReview[];
+}
+
+

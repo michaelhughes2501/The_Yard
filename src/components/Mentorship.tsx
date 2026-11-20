@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
-import { User, Mentorship, MentorshipMilestone } from '../types';
+import { User, Mentorship, MentorshipMilestone, MentorReviewSummary } from '../types';
 import {
   Users,
   CheckCircle,
@@ -27,10 +27,23 @@ import {
   AlertCircle,
   Plus,
   Target,
-  TrendingUp
+  TrendingUp,
+  Star,
+  ThumbsUp,
+  Trash2,
+  Quote
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import VideoCallManager from './VideoCallManager';
+
+const MENTOR_REVIEW_HIGHLIGHTS = [
+  'Parole & RMOMS Guidance',
+  'Career & Resume Prep',
+  'Always Responsive',
+  'Housing & Stability Tips',
+  'Accountability & Mindset',
+  'Lived Experience'
+];
 
 const DEFAULT_SHARED_MILESTONES: MentorshipMilestone[] = [
   {
@@ -411,8 +424,25 @@ export default function MentorshipTab() {
     Record<string, MentorshipMilestone['category']>
   >({});
 
-  const [filterMode, setFilterMode] = useState<'relevance' | 'experiences' | 'goals' | 'all'>('relevance');
+  const [filterMode, setFilterMode] = useState<
+    'relevance' | 'experiences' | 'goals' | 'top_rated' | 'all'
+  >('relevance');
   const [expandedReasons, setExpandedReasons] = useState<Record<string, boolean>>({});
+
+  // Mentorship Peer Reviews State
+  const [mentorReviewsMap, setMentorReviewsMap] = useState<Record<string, MentorReviewSummary>>({});
+  const [expandedReviews, setExpandedReviews] = useState<Record<string, boolean>>({});
+  const [reviewModalMentor, setReviewModalMentor] = useState<{ id: string; name: string } | null>(
+    null
+  );
+  const [reviewRating, setReviewRating] = useState<number>(5);
+  const [reviewCommRating, setReviewCommRating] = useState<number>(5);
+  const [reviewReentryRating, setReviewReentryRating] = useState<number>(5);
+  const [reviewRecommend, setReviewRecommend] = useState<boolean>(true);
+  const [reviewHighlights, setReviewHighlights] = useState<string[]>([]);
+  const [reviewText, setReviewText] = useState<string>('');
+  const [reviewAnonymous, setReviewAnonymous] = useState<boolean>(false);
+  const [isSubmittingReview, setIsSubmittingReview] = useState<boolean>(false);
 
   useEffect(() => {
     fetchData();
@@ -730,6 +760,115 @@ export default function MentorshipTab() {
           }
         }
       });
+
+    fetch('/api/mentorship/reviews', {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    })
+      .then(res => res.json())
+      .then((data: Record<string, MentorReviewSummary>) => {
+        if (data && typeof data === 'object') {
+          setMentorReviewsMap(data);
+        }
+      })
+      .catch(console.error);
+  };
+
+  const toggleReviews = (mentorId: string) => {
+    setExpandedReviews(prev => ({
+      ...prev,
+      [mentorId]: !prev[mentorId]
+    }));
+  };
+
+  const openReviewModal = (mentorId: string, mentorName: string) => {
+    const existing = mentorReviewsMap[mentorId]?.user_review;
+    setReviewModalMentor({ id: mentorId, name: mentorName });
+    setReviewRating(existing?.rating || 5);
+    setReviewCommRating(existing?.communication_rating || 5);
+    setReviewReentryRating(existing?.reentry_helpfulness || 5);
+    setReviewRecommend(existing ? existing.would_recommend : true);
+    setReviewHighlights(existing?.highlights || []);
+    setReviewText(existing?.review_text || '');
+    setReviewAnonymous(existing ? existing.is_anonymous : false);
+  };
+
+  const toggleReviewHighlight = (label: string) => {
+    setReviewHighlights(prev =>
+      prev.includes(label) ? prev.filter(item => item !== label) : [...prev, label]
+    );
+  };
+
+  const handleSubmitReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reviewModalMentor || !reviewText.trim()) return;
+    setIsSubmittingReview(true);
+    try {
+      const res = await fetch('/api/mentorship/reviews', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          mentor_id: reviewModalMentor.id,
+          rating: reviewRating,
+          communication_rating: reviewCommRating,
+          reentry_helpfulness: reviewReentryRating,
+          would_recommend: reviewRecommend,
+          highlights: reviewHighlights,
+          review_text: reviewText.trim(),
+          is_anonymous: reviewAnonymous
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Could not save mentorship review');
+      }
+      if (data.summary) {
+        setMentorReviewsMap(prev => ({
+          ...prev,
+          [reviewModalMentor.id]: data.summary
+        }));
+      }
+      setExpandedReviews(prev => ({ ...prev, [reviewModalMentor.id]: true }));
+      setStatusBanner({
+        type: 'success',
+        text: `Your ${reviewRating}-star mentorship review for ${reviewModalMentor.name} has been published!`
+      });
+      setReviewModalMentor(null);
+    } catch (err: any) {
+      setStatusBanner({
+        type: 'error',
+        text: err.message || 'Unable to submit mentorship review.'
+      });
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
+
+  const handleDeleteMyReview = async (reviewId: string) => {
+    try {
+      const res = await fetch(`/api/mentorship/reviews/${encodeURIComponent(reviewId)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok && data.mentor_id && data.summary) {
+        setMentorReviewsMap(prev => ({
+          ...prev,
+          [data.mentor_id]: data.summary
+        }));
+        setStatusBanner({
+          type: 'success',
+          text: 'Your mentorship review was removed.'
+        });
+        if (reviewModalMentor?.id === data.mentor_id) {
+          setReviewModalMentor(null);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to delete review:', err);
+    }
   };
 
   const toggleMentorStatus = async () => {
@@ -1640,7 +1779,7 @@ export default function MentorshipTab() {
                   </div>
                   <div className="text-2xl font-serif mb-4">{m.mentor_name}</div>
                   <div className="flex justify-between items-center flex-wrap gap-2">
-                    <div className="flex gap-4">
+                    <div className="flex flex-wrap gap-4">
                       <button
                         type="button"
                         onClick={() =>
@@ -1656,6 +1795,14 @@ export default function MentorshipTab() {
                         className="text-xs flex items-center gap-1.5 text-[#C69249] hover:opacity-80 font-semibold cursor-pointer"
                       >
                         <Video size={14} /> Video Call
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openReviewModal(m.mentor_id, m.mentor_name)}
+                        className="text-xs flex items-center gap-1.5 text-emerald-300 hover:opacity-80 font-semibold cursor-pointer"
+                      >
+                        <Star size={14} className="fill-emerald-300" />
+                        {mentorReviewsMap[m.mentor_id]?.user_review ? 'Edit Review' : 'Write Review'}
                       </button>
                     </div>
                     <button
@@ -1787,6 +1934,18 @@ export default function MentorshipTab() {
                   }`}
                 >
                   Professional Goals
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterMode('top_rated')}
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center gap-1 ${
+                    filterMode === 'top_rated'
+                      ? 'bg-[#C69249] text-[#261F1A] font-semibold'
+                      : 'hover:bg-[#261F1A]/5 text-[#6E6359]'
+                  }`}
+                >
+                  <Star size={11} className={filterMode === 'top_rated' ? 'fill-[#261F1A]' : 'text-[#C69249]'} />
+                  Top Rated
                 </button>
                 <button
                   type="button"
@@ -1955,6 +2114,8 @@ export default function MentorshipTab() {
                     ? 'Shared Lived Experiences'
                     : filterMode === 'goals'
                     ? 'Professional Goal Fit'
+                    : filterMode === 'top_rated'
+                    ? 'Highest Mentee Reviews'
                     : 'Directory Default'}
                 </strong>
               </span>
@@ -1976,6 +2137,17 @@ export default function MentorshipTab() {
                   ? [...scoredMentors].sort((a, b) => b.experienceScore - a.experienceScore)
                   : filterMode === 'goals'
                   ? [...scoredMentors].sort((a, b) => b.goalScore - a.goalScore)
+                  : filterMode === 'top_rated'
+                  ? [...scoredMentors].sort((a, b) => {
+                      const ratingDiff =
+                        (mentorReviewsMap[b.mentor.id]?.average_rating || 0) -
+                        (mentorReviewsMap[a.mentor.id]?.average_rating || 0);
+                      if (ratingDiff !== 0) return ratingDiff;
+                      return (
+                        (mentorReviewsMap[b.mentor.id]?.total_reviews || 0) -
+                        (mentorReviewsMap[a.mentor.id]?.total_reviews || 0)
+                      );
+                    })
                   : scoredMentors;
 
               if (displayedMentors.length === 0) {
@@ -1998,6 +2170,11 @@ export default function MentorshipTab() {
                 }) => {
                   const pending = pendingOutgoing.find(m => m.mentor_id === mentor.id);
                   const active = myMentors.find(m => m.mentor_id === mentor.id);
+                  const reviewSummary = mentorReviewsMap[mentor.id];
+                  const avgRating = reviewSummary?.average_rating || 0;
+                  const totalReviews = reviewSummary?.total_reviews || 0;
+                  const reviewsList = reviewSummary?.reviews || [];
+                  const isSelfMentor = mentor.id === user?.id;
 
                   return (
                     <div
@@ -2037,6 +2214,47 @@ export default function MentorshipTab() {
 
                       <p className="text-sm text-[#4A4037] leading-relaxed mb-4">{mentor.bio}</p>
 
+                      {/* Peer Mentorship Review Summary Strip */}
+                      <div className="mb-4 p-3.5 rounded-xl bg-[#FAF7F2] border border-[#E2D9CC] flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <div className="flex items-center gap-1">
+                            {[1, 2, 3, 4, 5].map(starIdx => (
+                              <Star
+                                key={starIdx}
+                                size={13}
+                                className={
+                                  starIdx <= Math.round(avgRating)
+                                    ? 'text-[#C69249] fill-[#C69249]'
+                                    : 'text-[#C9BFAF]'
+                                }
+                              />
+                            ))}
+                            <span className="ml-1 font-mono text-xs font-bold text-[#261F1A] tabular-nums">
+                              {totalReviews > 0 ? avgRating.toFixed(1) : 'New'}
+                            </span>
+                          </div>
+                          <span className="text-xs text-[#74695E] font-mono tabular-nums">
+                            {totalReviews} {totalReviews === 1 ? 'mentee review' : 'mentee reviews'}
+                          </span>
+                          {totalReviews > 0 && reviewSummary && (
+                            <>
+                              <span className="text-[#C9BFAF]" aria-hidden="true">·</span>
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-800">
+                                <ThumbsUp size={11} /> {reviewSummary.recommend_percent}% Recommended
+                              </span>
+                            </>
+                          )}
+                        </div>
+
+                        {totalReviews > 0 && reviewSummary && (
+                          <div className="flex items-center gap-3 text-[11px] font-mono text-[#74695E] tabular-nums">
+                            <span>Responsiveness: {reviewSummary.avg_communication.toFixed(1)}/5</span>
+                            <span aria-hidden="true">·</span>
+                            <span>Re-Entry Guidance: {reviewSummary.avg_reentry_helpfulness.toFixed(1)}/5</span>
+                          </div>
+                        )}
+                      </div>
+
                       {/* Clean Unboxed Metadata Line for Shared Experiences & Goals */}
                       {(sharedExperienceBadges.length > 0 || professionalGoalBadges.length > 0) && (
                         <div className="flex flex-wrap items-center gap-2 text-xs text-[#74695E] mb-4">
@@ -2051,16 +2269,40 @@ export default function MentorshipTab() {
                       )}
 
                       <div className="pt-4 border-t border-[#E2D9CC]">
-                        <div className="flex justify-between items-center flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => toggleReasons(mentor.id)}
-                            className="text-xs font-medium text-[#74695E] hover:text-[#261F1A] flex items-center gap-1.5 cursor-pointer"
-                          >
-                            {expandedReasons[mentor.id]
-                              ? 'Hide Questionnaire Alignment'
-                              : `Why You Match (${reasons.length} reasons)`}
-                          </button>
+                        <div className="flex justify-between items-center flex-wrap gap-3">
+                          <div className="flex flex-wrap items-center gap-4">
+                            <button
+                              type="button"
+                              onClick={() => toggleReasons(mentor.id)}
+                              className="text-xs font-medium text-[#74695E] hover:text-[#261F1A] flex items-center gap-1.5 cursor-pointer"
+                            >
+                              {expandedReasons[mentor.id]
+                                ? 'Hide Alignment'
+                                : `Why You Match (${reasons.length})`}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => toggleReviews(mentor.id)}
+                              className="text-xs font-semibold text-[#984B27] hover:underline flex items-center gap-1 cursor-pointer"
+                            >
+                              <Quote size={12} />
+                              {expandedReviews[mentor.id]
+                                ? 'Hide Reviews'
+                                : `Read Reviews (${totalReviews})`}
+                            </button>
+
+                            {!isSelfMentor && (
+                              <button
+                                type="button"
+                                onClick={() => openReviewModal(mentor.id, mentor.name)}
+                                className="text-xs font-semibold text-[#261F1A] hover:text-[#984B27] flex items-center gap-1 cursor-pointer"
+                              >
+                                <Star size={12} className="text-[#C69249] fill-[#C69249]" />
+                                {reviewSummary?.user_review ? 'Edit My Review' : 'Write Review'}
+                              </button>
+                            )}
+                          </div>
 
                           {active ? (
                             <span className="text-xs font-semibold text-emerald-800">
@@ -2103,6 +2345,115 @@ export default function MentorshipTab() {
                                     <span>{reason}</span>
                                   </div>
                                 ))}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+
+                        {/* Expandable Peer Mentorship Reviews Accordion */}
+                        <AnimatePresence>
+                          {expandedReviews[mentor.id] && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="overflow-hidden mt-3"
+                            >
+                              <div className="bg-[#FAF7F2] p-4 rounded-xl border border-[#D8CFC2] space-y-3">
+                                <div className="flex items-center justify-between border-b border-[#E5DDD0] pb-2">
+                                  <span className="text-[10px] uppercase tracking-wider font-mono text-[#984B27] font-bold">
+                                    Peer Mentee Reviews ({totalReviews})
+                                  </span>
+                                  {!isSelfMentor && (
+                                    <button
+                                      type="button"
+                                      onClick={() => openReviewModal(mentor.id, mentor.name)}
+                                      className="text-[11px] font-semibold text-[#984B27] hover:underline cursor-pointer"
+                                    >
+                                      {reviewSummary?.user_review ? 'Edit Your Review' : '+ Leave a Review'}
+                                    </button>
+                                  )}
+                                </div>
+
+                                {reviewsList.length === 0 ? (
+                                  <p className="text-xs text-[#74695E] py-2">
+                                    No peer reviews yet. Be the first mentee to share feedback on {mentor.name}’s guidance.
+                                  </p>
+                                ) : (
+                                  <div className="space-y-3">
+                                    {reviewsList.map(rev => (
+                                      <div
+                                        key={rev.id}
+                                        className="p-3.5 rounded-xl bg-[#F6F2EB] border border-[#E5DDD0] space-y-2"
+                                      >
+                                        <div className="flex items-start justify-between gap-2">
+                                          <div>
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-xs font-semibold text-[#261F1A]">
+                                                {rev.reviewer_name}
+                                              </span>
+                                              {rev.would_recommend && (
+                                                <span className="inline-flex items-center gap-1 text-[10px] font-mono text-emerald-800">
+                                                  <ThumbsUp size={10} /> Recommends
+                                                </span>
+                                              )}
+                                            </div>
+                                            <div className="flex items-center gap-1 mt-0.5">
+                                              {[1, 2, 3, 4, 5].map(s => (
+                                                <Star
+                                                  key={s}
+                                                  size={11}
+                                                  className={
+                                                    s <= rev.rating
+                                                      ? 'text-[#C69249] fill-[#C69249]'
+                                                      : 'text-[#C9BFAF]'
+                                                  }
+                                                />
+                                              ))}
+                                              <span className="ml-1.5 text-[10px] font-mono text-[#74695E]">
+                                                Comm {rev.communication_rating}/5 · Re-Entry {rev.reentry_helpfulness}/5
+                                              </span>
+                                            </div>
+                                          </div>
+
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-mono text-[#7D7166]">
+                                              {new Date(rev.updated_at).toLocaleDateString()}
+                                            </span>
+                                            {rev.reviewer_id === user?.id && (
+                                              <button
+                                                type="button"
+                                                onClick={() => handleDeleteMyReview(rev.id)}
+                                                title="Delete your review"
+                                                className="text-red-700 hover:bg-red-100/70 p-1 rounded-md transition-colors cursor-pointer"
+                                              >
+                                                <Trash2 size={12} />
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        <p className="text-xs text-[#3D342C] leading-relaxed">
+                                          “{rev.review_text}”
+                                        </p>
+
+                                        {rev.highlights && rev.highlights.length > 0 && (
+                                          <div className="flex flex-wrap gap-1.5 pt-1">
+                                            {rev.highlights.map(tag => (
+                                              <span
+                                                key={tag}
+                                                className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-[#EFE7DC] text-[#4A4037] border border-[#DDD4C7]"
+                                              >
+                                                {tag}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             </motion.div>
                           )}
@@ -2206,6 +2557,227 @@ export default function MentorshipTab() {
                     type="button"
                     onClick={() => setRequestModalOpen(false)}
                     className="flex-1 border border-[#D5CBC0] py-3 px-4 rounded-xl text-xs font-semibold hover:bg-[#261F1A]/5 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Mentorship Review Modal */}
+      <AnimatePresence>
+        {reviewModalMentor && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-[#F6F2EB] w-full max-w-lg border border-[#D8CFC2] rounded-2xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col"
+            >
+              <div className="bg-[#261F1A] text-[#F7F3EC] p-5 flex justify-between items-center shrink-0">
+                <div>
+                  <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-[#C69249] block">
+                    Peer Mentorship Review
+                  </span>
+                  <h3 className="font-serif text-xl">
+                    Review {reviewModalMentor.name}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReviewModalMentor(null)}
+                  className="hover:opacity-70 transition-opacity cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSubmitReview} className="p-6 space-y-5 overflow-y-auto">
+                {/* Overall 5-Star Rating */}
+                <div className="space-y-2">
+                  <label className="block text-xs font-semibold text-[#261F1A]">
+                    Overall Mentorship Rating
+                  </label>
+                  <div className="flex items-center gap-2">
+                    {[1, 2, 3, 4, 5].map(starVal => (
+                      <button
+                        key={starVal}
+                        type="button"
+                        onClick={() => setReviewRating(starVal)}
+                        className="p-1 hover:scale-110 transition-transform cursor-pointer"
+                        aria-label={`Rate ${starVal} stars overall`}
+                      >
+                        <Star
+                          size={26}
+                          className={
+                            starVal <= reviewRating
+                              ? 'text-[#C69249] fill-[#C69249]'
+                              : 'text-[#C9BFAF]'
+                          }
+                        />
+                      </button>
+                    ))}
+                    <span className="ml-2 font-mono text-sm font-bold text-[#261F1A] tabular-nums">
+                      {reviewRating}.0 / 5.0
+                    </span>
+                  </div>
+                </div>
+
+                {/* Sub-Ratings Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-xl bg-[#FAF7F2] border border-[#E2D9CC]">
+                  <div className="space-y-1.5">
+                    <span className="block text-[11px] font-semibold text-[#4A4037]">
+                      Responsiveness & Communication
+                    </span>
+                    <div className="flex items-center gap-1">
+                      {[1, 2, 3, 4, 5].map(val => (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => setReviewCommRating(val)}
+                          className="p-0.5 cursor-pointer"
+                          aria-label={`Communication ${val} stars`}
+                        >
+                          <Star
+                            size={16}
+                            className={
+                              val <= reviewCommRating
+                                ? 'text-[#984B27] fill-[#984B27]'
+                                : 'text-[#C9BFAF]'
+                            }
+                          />
+                        </button>
+                      ))}
+                      <span className="ml-1 font-mono text-xs text-[#74695E]">{reviewCommRating}/5</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <span className="block text-[11px] font-semibold text-[#4A4037]">
+                      Practical Re-Entry Guidance
+                    </span>
+                    <div className="flex items-center gap-1">
+                      {[1, 2, 3, 4, 5].map(val => (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => setReviewReentryRating(val)}
+                          className="p-0.5 cursor-pointer"
+                          aria-label={`Re-entry helpfulness ${val} stars`}
+                        >
+                          <Star
+                            size={16}
+                            className={
+                              val <= reviewReentryRating
+                                ? 'text-[#984B27] fill-[#984B27]'
+                                : 'text-[#C9BFAF]'
+                            }
+                          />
+                        </button>
+                      ))}
+                      <span className="ml-1 font-mono text-xs text-[#74695E]">{reviewReentryRating}/5</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Mentor Strengths / Highlights */}
+                <div className="space-y-2">
+                  <label className="block text-xs font-semibold text-[#261F1A]">
+                    What stood out most? (Select highlights)
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {MENTOR_REVIEW_HIGHLIGHTS.map(tag => {
+                      const active = reviewHighlights.includes(tag);
+                      return (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => toggleReviewHighlight(tag)}
+                          className={`px-3 py-1.5 rounded-full text-xs border transition-colors cursor-pointer flex items-center gap-1 ${
+                            active
+                              ? 'bg-[#984B27] text-[#F7F3EC] border-[#984B27] font-medium'
+                              : 'bg-[#FAF7F2] text-[#4A4037] border-[#D5CBC0] hover:border-[#984B27]'
+                          }`}
+                        >
+                          {active && <Check size={11} strokeWidth={2.5} />}
+                          {tag}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Written Review */}
+                <div className="space-y-2">
+                  <label className="block text-xs font-semibold text-[#261F1A]">
+                    Share Your Experience with {reviewModalMentor.name}
+                  </label>
+                  <textarea
+                    required
+                    rows={4}
+                    maxLength={800}
+                    value={reviewText}
+                    onChange={e => setReviewText(e.target.value)}
+                    placeholder="How did this mentor help with your re-entry goals, parole compliance, job search, or mindset?"
+                    className="w-full border border-[#D5CBC0] bg-[#FAF7F2] rounded-xl p-3 text-sm text-[#261F1A] focus:outline-none focus:border-[#984B27]"
+                  />
+                </div>
+
+                {/* Recommend & Anonymous Toggles */}
+                <div className="p-3.5 rounded-xl bg-[#EFE7DC]/70 border border-[#D8CFC2] space-y-2.5">
+                  <label className="flex items-center gap-2.5 cursor-pointer select-none text-xs text-[#261F1A]">
+                    <input
+                      type="checkbox"
+                      checked={reviewRecommend}
+                      onChange={e => setReviewRecommend(e.target.checked)}
+                      className="w-4 h-4 rounded accent-[#984B27] cursor-pointer"
+                    />
+                    <span className="font-semibold">I recommend this mentor to other peers</span>
+                  </label>
+                  <label className="flex items-center gap-2.5 cursor-pointer select-none text-xs text-[#4A4037] pt-2 border-t border-[#D8CFC2]">
+                    <input
+                      type="checkbox"
+                      checked={reviewAnonymous}
+                      onChange={e => setReviewAnonymous(e.target.checked)}
+                      className="w-4 h-4 rounded accent-[#261F1A] cursor-pointer"
+                    />
+                    <span>Post anonymously as "Anonymous Mentee"</span>
+                  </label>
+                </div>
+
+                <div className="flex items-center gap-3 pt-1">
+                  <button
+                    type="submit"
+                    disabled={isSubmittingReview || !reviewText.trim()}
+                    className="flex-1 bg-[#984B27] text-[#F7F3EC] py-3 px-4 rounded-xl text-xs font-semibold hover:bg-[#823E1E] transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    {isSubmittingReview
+                      ? 'Publishing Review...'
+                      : mentorReviewsMap[reviewModalMentor.id]?.user_review
+                      ? 'Update Mentorship Review'
+                      : 'Publish Mentorship Review'}
+                  </button>
+                  {mentorReviewsMap[reviewModalMentor.id]?.user_review && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleDeleteMyReview(
+                          mentorReviewsMap[reviewModalMentor.id].user_review!.id
+                        )
+                      }
+                      className="px-3.5 py-3 rounded-xl border border-red-300 text-red-700 hover:bg-red-50 text-xs font-semibold cursor-pointer"
+                      title="Delete your review"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setReviewModalMentor(null)}
+                    className="px-4 py-3 border border-[#D5CBC0] rounded-xl text-xs font-semibold hover:bg-[#261F1A]/5 transition-colors cursor-pointer"
                   >
                     Cancel
                   </button>

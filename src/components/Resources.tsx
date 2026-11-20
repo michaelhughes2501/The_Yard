@@ -27,7 +27,8 @@ import {
   ChevronDown,
   ChevronUp,
   Check,
-  MessageSquare
+  MessageSquare,
+  Bookmark
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -41,7 +42,7 @@ import {
 import { geminiService } from '../services/geminiService';
 import Markdown from 'react-markdown';
 import { useAuth } from '../AuthContext';
-import { ParoleOfficer, ResourceRatingSummary } from '../types';
+import { ParoleOfficer, ResourceRatingSummary, ResourceBookmark } from '../types';
 import ConfirmationDialog from './ConfirmationDialog';
 import ServiceMap from './ServiceMap';
 
@@ -298,7 +299,9 @@ const ResourceCard = ({
   icon: Icon,
   type,
   ratingSummary,
-  onSubmitRating
+  onSubmitRating,
+  isBookmarked,
+  onToggleBookmark
 }: {
   item: any;
   icon: any;
@@ -310,6 +313,8 @@ const ResourceCard = ({
     verifiedReliable: boolean,
     reviewNote: string
   ) => Promise<void>;
+  isBookmarked: boolean;
+  onToggleBookmark: () => void;
 }) => (
   <motion.div
     initial={{ opacity: 0, y: 14 }}
@@ -318,13 +323,28 @@ const ResourceCard = ({
     className="flex flex-col justify-between bg-[#F6F2EB] border border-[#DDD4C7] hover:border-[#C5B8A8] rounded-2xl p-6 transition-all duration-200 shadow-2xs"
   >
     <div>
-      <div className="flex justify-between items-start mb-4">
+      <div className="flex justify-between items-start mb-4 gap-2">
         <div className="p-2.5 bg-[#EFE7DC] text-[#984B27] rounded-xl">
           <Icon size={20} />
         </div>
-        <span className="text-[10px] font-mono uppercase tracking-wider text-[#7D7166]">
-          {type}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-mono uppercase tracking-wider text-[#7D7166]">
+            {type}
+          </span>
+          <button
+            type="button"
+            onClick={onToggleBookmark}
+            title={isBookmarked ? 'Remove from Saved Bookmarks' : 'Save to Resource Bookmarks'}
+            aria-label={isBookmarked ? `Remove ${item.title} from bookmarks` : `Bookmark ${item.title}`}
+            className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
+              isBookmarked
+                ? 'bg-[#984B27] border-[#984B27] text-[#F7F3EC]'
+                : 'bg-[#FAF7F2] border-[#D8CFC2] text-[#7D7166] hover:border-[#984B27] hover:text-[#984B27]'
+            }`}
+          >
+            <Bookmark size={14} className={isBookmarked ? 'fill-[#F7F3EC]' : ''} />
+          </button>
+        </div>
       </div>
       <h4 className="text-lg font-serif font-semibold text-[#261F1A] mb-2">{item.title}</h4>
       <p className="text-xs text-[#4A4037] leading-relaxed">{item.description}</p>
@@ -407,11 +427,12 @@ const STATE_MULTIPLIERS: Record<string, { factor: number; truthInSentencingNote:
 export default function Resources({ initialShowAddPO = false }: { initialShowAddPO?: boolean }) {
   const { token } = useAuth();
   const [selectedCategory, setSelectedCategory] = useState<
-    'all' | 'mental_health' | 'dockets' | 'estimator' | 'parole' | 'map'
+    'all' | 'bookmarks' | 'mental_health' | 'dockets' | 'estimator' | 'parole' | 'map'
   >('all');
 
-  // 5-Star Community Ratings State
+  // 5-Star Community Ratings & Bookmarks State
   const [ratingsMap, setRatingsMap] = useState<Record<string, ResourceRatingSummary>>({});
+  const [bookmarks, setBookmarks] = useState<ResourceBookmark[]>([]);
   const [ratingFilter, setRatingFilter] = useState<'all' | 'verified4plus' | 'top_rated'>('all');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -483,8 +504,26 @@ export default function Resources({ initialShowAddPO = false }: { initialShowAdd
     }
   };
 
+  const fetchResourceBookmarks = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch('/api/resources/bookmarks', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setBookmarks(data);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load resource bookmarks:', err);
+    }
+  };
+
   useEffect(() => {
     fetchResourceRatings();
+    fetchResourceBookmarks();
     fetch('/api/parole-officers', {
       headers: { Authorization: `Bearer ${token}` }
     })
@@ -494,6 +533,44 @@ export default function Resources({ initialShowAddPO = false }: { initialShowAdd
       })
       .catch(console.error);
   }, [token]);
+
+  const bookmarkedIds = new Set(bookmarks.map(b => b.resource_id));
+
+  const handleToggleBookmark = async (
+    resourceId: string,
+    resourceType: string,
+    resourceTitle: string
+  ) => {
+    if (!token) {
+      showToast('Please sign in to save resource bookmarks.');
+      return;
+    }
+    try {
+      const res = await fetch('/api/resources/bookmarks/toggle', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          resource_id: resourceId,
+          resource_type: resourceType,
+          resource_title: resourceTitle
+        })
+      });
+      const data = await res.json();
+      if (res.ok && Array.isArray(data.bookmarks)) {
+        setBookmarks(data.bookmarks);
+        showToast(
+          data.bookmarked
+            ? `Saved "${resourceTitle}" to your Resource Bookmarks.`
+            : `Removed "${resourceTitle}" from your bookmarks.`
+        );
+      }
+    } catch (err) {
+      console.error('Error toggling bookmark:', err);
+    }
+  };
 
   const handleSubmitResourceRating = async (
     resourceId: string,
@@ -771,6 +848,23 @@ export default function Resources({ initialShowAddPO = false }: { initialShowAdd
               {opt.label}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={() =>
+              setSelectedCategory(prev => (prev === 'bookmarks' ? 'all' : 'bookmarks'))
+            }
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
+              selectedCategory === 'bookmarks'
+                ? 'bg-[#C69249] text-[#261F1A]'
+                : 'bg-white/10 text-[#F7F3EC] hover:bg-white/20 border border-[#C69249]/40'
+            }`}
+          >
+            <Bookmark
+              size={13}
+              className={selectedCategory === 'bookmarks' ? 'fill-[#261F1A]' : 'text-[#C69249]'}
+            />
+            Saved Bookmarks ({bookmarks.length})
+          </button>
         </div>
       </section>
 
@@ -778,6 +872,7 @@ export default function Resources({ initialShowAddPO = false }: { initialShowAdd
       <div className="flex flex-wrap gap-2 bg-[#F6F2EB] border border-[#DDD4C7] rounded-2xl p-2">
         {[
           { id: 'all', label: 'All 4 Resource Pillars' },
+          { id: 'bookmarks', label: `Saved Bookmarks (${bookmarks.length})` },
           { id: 'mental_health', label: '01 Mental Health & Self-Help' },
           { id: 'dockets', label: '02 State Court Dockets' },
           { id: 'estimator', label: '03 Sentence Estimator' },
@@ -788,18 +883,193 @@ export default function Resources({ initialShowAddPO = false }: { initialShowAdd
             key={tab.id}
             type="button"
             onClick={() => setSelectedCategory(tab.id as any)}
-            className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
+            className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
               selectedCategory === tab.id
                 ? 'bg-[#261F1A] text-[#F7F3EC]'
                 : 'text-[#6E6359] hover:text-[#261F1A] hover:bg-[#261F1A]/5'
             }`}
           >
+            {tab.id === 'bookmarks' && (
+              <Bookmark
+                size={12}
+                className={selectedCategory === 'bookmarks' ? 'fill-[#C69249] text-[#C69249]' : 'text-[#984B27]'}
+              />
+            )}
             {tab.label}
           </button>
         ))}
       </div>
 
       <div className="space-y-16">
+        {/* =====================================================================
+            DEDICATED VIEW: MY SAVED RESOURCE BOOKMARKS
+           ===================================================================== */}
+        {selectedCategory === 'bookmarks' && (
+          <section className="space-y-6" id="resources-saved-bookmarks">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-[#D8CFC2] pb-4">
+              <div className="space-y-1">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-[#984B27] font-bold">
+                  Personal Re-Entry Toolkit · Quick Access
+                </span>
+                <div className="flex items-center gap-3">
+                  <Bookmark className="text-[#984B27] fill-[#984B27]" size={24} />
+                  <h3 className="text-3xl font-serif text-[#261F1A]">
+                    My Saved Resource Bookmarks ({bookmarks.length})
+                  </h3>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedCategory('all')}
+                className="text-xs font-semibold text-[#984B27] hover:underline cursor-pointer"
+              >
+                Browse All 4 Resource Pillars →
+              </button>
+            </div>
+
+            {bookmarks.length === 0 ? (
+              <div className="p-10 rounded-2xl bg-[#F6F2EB] border border-dashed border-[#C9BFAF] text-center space-y-4">
+                <div className="w-12 h-12 rounded-2xl bg-[#EFE7DC] text-[#984B27] flex items-center justify-center mx-auto">
+                  <Bookmark size={22} />
+                </div>
+                <div className="space-y-1 max-w-md mx-auto">
+                  <h4 className="text-xl font-serif text-[#261F1A]">No Resources Bookmarked Yet</h4>
+                  <p className="text-xs text-[#74695E] leading-relaxed">
+                    Tap the bookmark ribbon on any mental health organization, self-help workbook, state court docket, RMOMS hotline, or parole portal to pin it here for instant access.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategory('all')}
+                  className="px-5 py-2.5 rounded-xl bg-[#261F1A] text-[#F7F3EC] text-xs font-semibold hover:bg-[#3A3028] transition-colors cursor-pointer"
+                >
+                  Explore Resources Directory
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {bookmarks.map(bm => {
+                  const mhMatch = MENTAL_HEALTH_RESOURCES.find(r => r.id === bm.resource_id);
+                  const uaMatch = UA_CHECK_INS.find(r => r.id === bm.resource_id);
+                  const paroleMatch = PAROLE_RESOURCES.find(r => r.id === bm.resource_id);
+                  const shMatch = SELF_HELP_MATERIALS.find(r => r.id === bm.resource_id);
+                  const docketMatch = STATE_COURT_DOCKETS.find(
+                    d => `docket-${d.abbr.toLowerCase()}` === bm.resource_id
+                  );
+
+                  const resolvedTitle =
+                    mhMatch?.title ||
+                    uaMatch?.title ||
+                    paroleMatch?.title ||
+                    shMatch?.title ||
+                    (docketMatch ? `${docketMatch.state} Court Dockets` : bm.resource_title);
+                  const resolvedDesc =
+                    mhMatch?.description ||
+                    uaMatch?.description ||
+                    paroleMatch?.description ||
+                    shMatch?.summary ||
+                    (docketMatch
+                      ? `${docketMatch.courtPortalName} — ${docketMatch.notes}`
+                      : 'Saved community re-entry resource.');
+                  const resolvedPhone = mhMatch?.phone || uaMatch?.phone || paroleMatch?.phone || docketMatch?.paroleOfficePhone;
+                  const resolvedUrl = mhMatch?.url || uaMatch?.url || paroleMatch?.url || docketMatch?.docketUrl;
+                  const typeLabel =
+                    bm.resource_type === 'mental_health'
+                      ? 'Support Organization'
+                      : bm.resource_type === 'self_help'
+                      ? 'Self-Help Workbook'
+                      : bm.resource_type === 'court_docket'
+                      ? 'State Court Docket'
+                      : bm.resource_type === 'ua_hotline'
+                      ? 'UA Check-In Hotline'
+                      : bm.resource_type === 'parole_portal'
+                      ? 'State Parole Portal'
+                      : 'Saved Resource';
+
+                  return (
+                    <motion.div
+                      key={bm.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-[#F6F2EB] border border-[#DDD4C7] rounded-2xl p-6 flex flex-col justify-between shadow-2xs"
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-2 mb-3">
+                          <span className="text-[10px] font-mono uppercase tracking-wider text-[#984B27] font-bold">
+                            {typeLabel}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleToggleBookmark(bm.resource_id, bm.resource_type, resolvedTitle)
+                            }
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-[#74695E] hover:text-red-700 cursor-pointer"
+                            title="Remove bookmark"
+                          >
+                            <Bookmark size={13} className="fill-[#984B27] text-[#984B27]" />
+                            Remove
+                          </button>
+                        </div>
+                        <h4 className="text-lg font-serif font-semibold text-[#261F1A] mb-2">
+                          {resolvedTitle}
+                        </h4>
+                        <p className="text-xs text-[#4A4037] leading-relaxed">{resolvedDesc}</p>
+                      </div>
+
+                      <div className="mt-4">
+                        {bm.resource_type !== 'self_help' && (
+                          <ResourceStarRatingWidget
+                            resourceId={bm.resource_id}
+                            resourceTitle={resolvedTitle}
+                            summary={ratingsMap[bm.resource_id]}
+                            onSubmitRating={handleSubmitResourceRating}
+                            compact
+                          />
+                        )}
+
+                        <div className="pt-3 mt-3 border-t border-[#E5DDD0] flex flex-wrap gap-2">
+                          {shMatch ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setExpandedWorkbookId(shMatch.id);
+                                setSelectedCategory('mental_health');
+                              }}
+                              className="w-full py-2 px-3 rounded-xl bg-[#261F1A] text-[#F7F3EC] text-xs font-semibold hover:bg-[#3A3028] transition-colors cursor-pointer"
+                            >
+                              Open Self-Help Workbook →
+                            </button>
+                          ) : (
+                            <>
+                              {resolvedPhone && (
+                                <a
+                                  href={`tel:${resolvedPhone}`}
+                                  className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-[#984B27] text-[#F7F3EC] font-mono text-xs font-semibold hover:bg-[#823E1E]"
+                                >
+                                  <PhoneCall size={13} /> {resolvedPhone}
+                                </a>
+                              )}
+                              {resolvedUrl && (
+                                <a
+                                  href={resolvedUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-[#261F1A] text-[#F7F3EC] text-xs font-semibold hover:bg-[#3A3028]"
+                                >
+                                  Open Portal <ExternalLink size={12} />
+                                </a>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        )}
         {/* =====================================================================
             PILLAR 1: MENTAL HEALTH SUPPORT ORGANIZATIONS & SELF-HELP MATERIALS
            ===================================================================== */}
@@ -832,6 +1102,8 @@ export default function Resources({ initialShowAddPO = false }: { initialShowAdd
                   type="Support Organization"
                   ratingSummary={ratingsMap[mh.id]}
                   onSubmitRating={handleSubmitResourceRating}
+                  isBookmarked={bookmarkedIds.has(mh.id)}
+                  onToggleBookmark={() => handleToggleBookmark(mh.id, 'mental_health', mh.title)}
                 />
               ))}
             </div>
@@ -863,9 +1135,24 @@ export default function Resources({ initialShowAddPO = false }: { initialShowAdd
                       }`}
                     >
                       <div className="space-y-2.5">
-                        <div className="flex justify-between items-center text-[11px] font-mono">
+                        <div className="flex justify-between items-center text-[11px] font-mono gap-2">
                           <span className="font-semibold text-[#984B27]">{item.category}</span>
-                          <span className="text-[#74695E]">{item.readTime}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[#74695E]">{item.readTime}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleBookmark(item.id, 'self_help', item.title)}
+                              title={bookmarkedIds.has(item.id) ? 'Remove from Saved Bookmarks' : 'Save Workbook'}
+                              aria-label={bookmarkedIds.has(item.id) ? `Remove ${item.title} from bookmarks` : `Bookmark ${item.title}`}
+                              className={`p-1 rounded-md border transition-colors cursor-pointer ${
+                                bookmarkedIds.has(item.id)
+                                  ? 'bg-[#984B27] border-[#984B27] text-[#F7F3EC]'
+                                  : 'bg-[#F6F2EB] border-[#D8CFC2] text-[#7D7166] hover:border-[#984B27] hover:text-[#984B27]'
+                              }`}
+                            >
+                              <Bookmark size={12} className={bookmarkedIds.has(item.id) ? 'fill-[#F7F3EC]' : ''} />
+                            </button>
+                          </div>
                         </div>
                         <h5 className="text-lg font-serif text-[#261F1A]">{item.title}</h5>
                         <p className="text-xs text-[#4A4037] leading-relaxed">{item.summary}</p>
@@ -998,11 +1285,43 @@ export default function Resources({ initialShowAddPO = false }: { initialShowAdd
                       className="bg-[#F6F2EB] border border-[#DDD4C7] rounded-2xl p-5 flex flex-col justify-between space-y-3 shadow-2xs"
                     >
                       <div className="space-y-2">
-                        <div className="flex justify-between items-center text-[11px] font-mono">
+                        <div className="flex justify-between items-center text-[11px] font-mono gap-2">
                           <span className="px-2 py-0.5 rounded-md bg-[#261F1A] text-[#F7F3EC] font-bold">
                             {entry.abbr}
                           </span>
-                          <span className="text-[#74695E]">Parole HQ: {entry.paroleOfficePhone}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[#74695E]">Parole HQ: {entry.paroleOfficePhone}</span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleToggleBookmark(
+                                  docketResourceId,
+                                  'court_docket',
+                                  `${entry.state} Court Dockets`
+                                )
+                              }
+                              title={
+                                bookmarkedIds.has(docketResourceId)
+                                  ? 'Remove from Saved Bookmarks'
+                                  : 'Save State Court Docket'
+                              }
+                              aria-label={
+                                bookmarkedIds.has(docketResourceId)
+                                  ? `Remove ${entry.state} docket from bookmarks`
+                                  : `Bookmark ${entry.state} docket`
+                              }
+                              className={`p-1 rounded-md border transition-colors cursor-pointer ${
+                                bookmarkedIds.has(docketResourceId)
+                                  ? 'bg-[#984B27] border-[#984B27] text-[#F7F3EC]'
+                                  : 'bg-[#FAF7F2] border-[#D8CFC2] text-[#7D7166] hover:border-[#984B27] hover:text-[#984B27]'
+                              }`}
+                            >
+                              <Bookmark
+                                size={12}
+                                className={bookmarkedIds.has(docketResourceId) ? 'fill-[#F7F3EC]' : ''}
+                              />
+                            </button>
+                          </div>
                         </div>
                         <h4 className="text-xl font-serif text-[#261F1A]">{entry.state}</h4>
                         <p className="text-xs font-semibold text-[#261F1A]">{entry.courtPortalName}</p>
@@ -1484,6 +1803,8 @@ export default function Resources({ initialShowAddPO = false }: { initialShowAdd
                       type="UA Check-In Hotline"
                       ratingSummary={ratingsMap[ua.id]}
                       onSubmitRating={handleSubmitResourceRating}
+                      isBookmarked={bookmarkedIds.has(ua.id)}
+                      onToggleBookmark={() => handleToggleBookmark(ua.id, 'ua_hotline', ua.title)}
                     />
                   ))}
                 </div>
@@ -1504,6 +1825,10 @@ export default function Resources({ initialShowAddPO = false }: { initialShowAdd
                     type="State Parole Portal"
                     ratingSummary={ratingsMap[parole.id]}
                     onSubmitRating={handleSubmitResourceRating}
+                    isBookmarked={bookmarkedIds.has(parole.id)}
+                    onToggleBookmark={() =>
+                      handleToggleBookmark(parole.id, 'parole_portal', parole.title)
+                    }
                   />
                 ))}
               </div>
