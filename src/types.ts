@@ -208,3 +208,26 @@ export interface MentorshipMatch {
   facilityMatch: boolean;
   locationMatch: boolean;
 }
+
+export interface ResourceRatingReview {
+  id: string;
+  resource_id: string;
+  user_id: string;
+  user_name: string;
+  rating: number;
+  verified_reliable: boolean;
+  review_note?: string;
+  updated_at: string;
+}
+
+export interface ResourceRatingSummary {
+  resource_id: string;
+  average_rating: number;
+  total_ratings: number;
+  verified_count: number;
+  user_rating: number | null;
+  user_verified: boolean;
+  user_note: string;
+  reviews: ResourceRatingReview[];
+}
+

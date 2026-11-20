@@ -1,32 +1,70 @@
-import { GoogleGenAI, Type } from "@google/genai";
+export interface AIChatMessage {
+  role: 'user' | 'model';
+  text: string;
+}
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+export interface AIChatResponse {
+  text: string;
+  suggestedTabs?: { tab: string; subTab?: string; label: string }[];
+}
 
 export const geminiService = {
-  async searchCourtDocket(state: string, query: string) {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `Find the official court docket or case search website for ${state}. Also search for cases related to: ${query}`,
-      config: {
-        tools: [{ googleSearch: {} }],
+  async chatWithAssistant(
+    messages: AIChatMessage[],
+    activeTab?: string,
+    token?: string | null
+  ): Promise<AIChatResponse> {
+    const res = await fetch('/api/ai/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
       },
+      body: JSON.stringify({ messages, activeTab })
     });
-    return response;
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'AI Guide request failed.');
+    }
+    return data;
+  },
+
+  async searchCourtDocket(state: string, query: string) {
+    const res = await fetch('/api/ai/docket-search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state, query })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Court docket search failed.');
+    }
+    return data;
   },
 
   async estimateSentence(crimeDetails: string) {
-    const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
-      contents: `Act as a legal information assistant. Based on the following crime details, provide a rough estimate of potential sentencing ranges based on common state and federal guidelines. Include a strong disclaimer that this is NOT legal advice. Details: ${crimeDetails}`,
+    const res = await fetch('/api/ai/estimate-sentence', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ crimeDetails })
     });
-    return response.text;
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Sentence estimation failed.');
+    }
+    return data.text || '';
   },
 
   async getSelfHelpMaterial(topic: string) {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `Provide a supportive, motivational, and practical self-help guide for someone recently released from prison focusing on: ${topic}. Include actionable steps and mental health resources.`,
+    const res = await fetch('/api/ai/self-help', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topic })
     });
-    return response.text;
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Self-help guide generation failed.');
+    }
+    return data.text || '';
   }
 };

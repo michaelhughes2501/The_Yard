@@ -23,7 +23,8 @@ import {
   Moon,
   Clapperboard,
   Compass,
-  ChevronRight
+  ChevronRight,
+  Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
@@ -57,9 +58,11 @@ import EventCalendar from './components/EventCalendar';
 import ProgressTracker from './components/ProgressTracker';
 import StudioConsole from './components/StudioConsole';
 import ExpeditionPreferences from './components/ExpeditionPreferences';
+import AIGuideBot from './components/AIGuideBot';
 
 type Tab =
   | 'expedition'
+  | 'ai-guide'
   | 'yard'
   | 'kites'
   | 'resources'
@@ -191,6 +194,7 @@ function MainApp() {
 
   const tabs: { id: Tab; name: string; icon: React.ComponentType<{ size?: number; className?: string }> }[] = [
     { id: 'expedition', name: 'Expedition profile', icon: Compass },
+    { id: 'ai-guide', name: 'AI Guide', icon: Sparkles },
     { id: 'yard', name: 'The Yard', icon: Users },
     { id: 'mentorship', name: 'Mentorship', icon: ShieldCheck },
     { id: 'kites', name: 'Kites', icon: Send },
@@ -224,10 +228,28 @@ function MainApp() {
     .map(part => part[0]?.toUpperCase())
     .join('') || 'MV';
 
+  const handleAiNavigate = (tab: string, subTab?: string) => {
+    if (tab === 'forum' && (subTab === 'stories' || subTab === 'discussions')) {
+      setForumSubTab(subTab);
+    }
+    if (tab === 'opportunities' && (subTab === 'jobs' || subTab === 'housing' || subTab === 'tracker')) {
+      setOpportunitiesSubTab(subTab);
+    }
+    setActiveTab(tab as Tab);
+  };
+
   const renderContent = () => {
     switch (activeTab) {
       case 'expedition':
         return <ExpeditionPreferences onNavigateTab={tab => setActiveTab(tab as Tab)} />;
+      case 'ai-guide':
+        return (
+          <AIGuideBot
+            mode="full"
+            activeTab={activeTab}
+            onNavigate={handleAiNavigate}
+          />
+        );
       case 'yard':
         return <TheYard />;
       case 'studio':
@@ -599,6 +621,15 @@ function MainApp() {
       </div>
 
       <SOSButton />
+
+      {activeTab !== 'ai-guide' && (
+        <AIGuideBot
+          mode="floating"
+          activeTab={activeTab}
+          onNavigate={handleAiNavigate}
+          onExpandFull={() => setActiveTab('ai-guide')}
+        />
+      )}
 
       <QuickActions
         onAction={(action: 'jobs' | 'housing' | 'contact') => {

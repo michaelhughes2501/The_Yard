@@ -1,9 +1,26 @@
+import "dotenv/config";
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import Database from "better-sqlite3";
 import crypto from "crypto";
 import fs from "fs";
+import { GoogleGenAI } from "@google/genai";
+
+function getGeminiClient(): GoogleGenAI {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || !apiKey.trim()) {
+    throw new Error("GEMINI_API_KEY is not configured. Please check your API key in Settings > Secrets.");
+  }
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        "User-Agent": "aistudio-build",
+      },
+    },
+  });
+}
 
 // Initialize Database
 const dbDir = path.join(process.cwd(), 'data');
@@ -241,7 +258,52 @@ db.exec(`
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(user_id) REFERENCES users(id)
   );
+
+  CREATE TABLE IF NOT EXISTS resource_ratings (
+    id TEXT PRIMARY KEY,
+    resource_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    user_name TEXT NOT NULL,
+    rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
+    verified_reliable INTEGER DEFAULT 1,
+    review_note TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(resource_id, user_id)
+  );
 `);
+
+// Seed initial peer-verified ratings for core community resources if empty
+try {
+  const existingRatings = db.prepare("SELECT COUNT(*) as count FROM resource_ratings").get() as any;
+  if (!existingRatings || existingRatings.count === 0) {
+    const seedRatings = [
+      { resource_id: "mh-988", user_id: "seed-1", user_name: "Marcus Vance", rating: 5, verified_reliable: 1, review_note: "Answered in under 45 seconds. Respectful counselor who listened without judgment." },
+      { resource_id: "mh-988", user_id: "seed-2", user_name: "Maya Robinson", rating: 5, verified_reliable: 1, review_note: "Available 24/7 by text too—helped me through a stressful first month home." },
+      { resource_id: "mh-1", user_id: "seed-3", user_name: "Carlos Mendez", rating: 5, verified_reliable: 1, review_note: "Texting HOME to 741741 connected me immediately when I felt overwhelmed in public." },
+      { resource_id: "mh-2", user_id: "seed-1", user_name: "Marcus Vance", rating: 4, verified_reliable: 1, review_note: "Solid referrals for Medicaid-covered outpatient counseling and recovery groups." },
+      { resource_id: "mh-3", user_id: "seed-4", user_name: "David Chen", rating: 5, verified_reliable: 1, review_note: "Counselors genuinely understand post-incarceration stress and parole pressures." },
+      { resource_id: "mh-4", user_id: "seed-2", user_name: "Maya Robinson", rating: 4, verified_reliable: 1, review_note: "Great Medicaid guide and free peer-led anxiety support meetings." },
+      { resource_id: "mh-5", user_id: "seed-3", user_name: "Carlos Mendez", rating: 4, verified_reliable: 1, review_note: "Family reunification circles were welcoming and structured." },
+      { resource_id: "rmoms-1", user_id: "seed-3", user_name: "Carlos Mendez", rating: 5, verified_reliable: 1, review_note: "Verified active line. Call right after 5:00 AM and always save your confirmation code." },
+      { resource_id: "rmoms-1", user_id: "seed-1", user_name: "Marcus Vance", rating: 4, verified_reliable: 1, review_note: "Accurate Denver Metro hours—arrive 45 minutes before closing to avoid long waits." },
+      { resource_id: "rmoms-2", user_id: "seed-4", user_name: "David Chen", rating: 4, verified_reliable: 1, review_note: "Hotline updates reliably every morning for Colorado Springs color groups." },
+      { resource_id: "ua-general", user_id: "seed-2", user_name: "Maya Robinson", rating: 5, verified_reliable: 1, review_note: "Automated daily verification works smoothly on mobile." },
+      { resource_id: "parole-ca", user_id: "seed-1", user_name: "Marcus Vance", rating: 4, verified_reliable: 1, review_note: "Found my Oakland regional office number and BPH schedule right away." },
+      { resource_id: "parole-co", user_id: "seed-3", user_name: "Carlos Mendez", rating: 5, verified_reliable: 1, review_note: "Official CDOC portal lists every district parole office and CPO desk." },
+      { resource_id: "parole-ny", user_id: "seed-2", user_name: "Maya Robinson", rating: 4, verified_reliable: 1, review_note: "Helpful travel permit instructions and borough supervision phone numbers." },
+      { resource_id: "parole-tx", user_id: "seed-4", user_name: "David Chen", rating: 4, verified_reliable: 1, review_note: "Regional office locator is up to date for Houston and Dallas districts." }
+    ];
+    const insertRating = db.prepare(
+      "INSERT OR IGNORE INTO resource_ratings (id, resource_id, user_id, user_name, rating, verified_reliable, review_note) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    );
+    for (const r of seedRatings) {
+      insertRating.run(crypto.randomUUID(), r.resource_id, r.user_id, r.user_name, r.rating, r.verified_reliable, r.review_note);
+    }
+  }
+} catch (e) {
+  console.warn("Failed to seed initial resource ratings:", e);
+}
 
 // Column/table migrations for databases created before these fields existed.
 // Must run AFTER the base CREATE TABLE statements above so `ALTER TABLE` targets exist
@@ -2358,6 +2420,275 @@ async function startServer() {
   app.delete("/api/admin/posts/:id", requireAuth, requireRole(['moderator', 'admin', 'super_admin']), (req: any, res) => {
     deleteThreadCascade(req.params.id);
     res.json({ success: true });
+  });
+
+  // =========================================================================
+  // COMMUNITY RESOURCE 5-STAR RATING & VERIFICATION API
+  // =========================================================================
+  const buildResourceRatingSummary = (resourceId: string, currentUserId?: string | null) => {
+    const rows = db.prepare(
+      "SELECT id, resource_id, user_id, user_name, rating, verified_reliable, review_note, updated_at FROM resource_ratings WHERE resource_id = ? ORDER BY updated_at DESC"
+    ).all(resourceId) as any[];
+
+    const total_ratings = rows.length;
+    const sum = rows.reduce((acc, r) => acc + Number(r.rating || 0), 0);
+    const average_rating = total_ratings > 0 ? Math.round((sum / total_ratings) * 10) / 10 : 0;
+    const verified_count = rows.filter(r => r.verified_reliable === 1).length;
+    const myRow = currentUserId ? rows.find(r => r.user_id === currentUserId) : null;
+
+    return {
+      resource_id: resourceId,
+      average_rating,
+      total_ratings,
+      verified_count,
+      user_rating: myRow ? Number(myRow.rating) : null,
+      user_verified: myRow ? myRow.verified_reliable === 1 : true,
+      user_note: myRow?.review_note || "",
+      reviews: rows.slice(0, 8).map(r => ({
+        id: r.id,
+        resource_id: r.resource_id,
+        user_id: r.user_id,
+        user_name: r.user_name,
+        rating: Number(r.rating),
+        verified_reliable: r.verified_reliable === 1,
+        review_note: r.review_note || "",
+        updated_at: r.updated_at
+      }))
+    };
+  };
+
+  app.get("/api/resources/ratings", (req: any, res) => {
+    try {
+      let currentUserId: string | null = null;
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        const token = authHeader.split(" ")[1];
+        const session = db.prepare("SELECT user_id FROM sessions WHERE token = ?").get(token) as any;
+        if (session) currentUserId = session.user_id;
+      }
+
+      const distinctIds = db.prepare("SELECT DISTINCT resource_id FROM resource_ratings").all() as any[];
+      const map: Record<string, any> = {};
+      for (const row of distinctIds) {
+        map[row.resource_id] = buildResourceRatingSummary(row.resource_id, currentUserId);
+      }
+      res.json(map);
+    } catch (err: any) {
+      console.error("Error fetching resource ratings:", err);
+      res.status(500).json({ error: "Failed to load resource ratings" });
+    }
+  });
+
+  app.post("/api/resources/:resourceId/rate", requireAuth, (req: any, res) => {
+    try {
+      const resourceId = String(req.params.resourceId || "").trim();
+      const ratingNum = Number(req.body.rating);
+      const verifiedReliable = req.body.verified_reliable === false ? 0 : 1;
+      const reviewNote = typeof req.body.review_note === "string" ? req.body.review_note.trim().slice(0, 400) : "";
+
+      if (!resourceId) {
+        return res.status(400).json({ error: "Missing resource ID" });
+      }
+      if (!Number.isInteger(ratingNum) || ratingNum < 1 || ratingNum > 5) {
+        return res.status(400).json({ error: "Rating must be an integer between 1 and 5" });
+      }
+
+      const userRow = db.prepare("SELECT username FROM users WHERE id = ?").get(req.userId) as any;
+      const userName = userRow?.username || "Community Member";
+
+      const existing = db.prepare(
+        "SELECT id FROM resource_ratings WHERE resource_id = ? AND user_id = ?"
+      ).get(resourceId, req.userId) as any;
+
+      if (existing) {
+        db.prepare(
+          "UPDATE resource_ratings SET rating = ?, verified_reliable = ?, review_note = ?, user_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        ).run(ratingNum, verifiedReliable, reviewNote, userName, existing.id);
+      } else {
+        db.prepare(
+          "INSERT INTO resource_ratings (id, resource_id, user_id, user_name, rating, verified_reliable, review_note) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        ).run(crypto.randomUUID(), resourceId, req.userId, userName, ratingNum, verifiedReliable, reviewNote);
+      }
+
+      const summary = buildResourceRatingSummary(resourceId, req.userId);
+      res.json({ success: true, summary });
+    } catch (err: any) {
+      console.error("Error submitting resource rating:", err);
+      res.status(500).json({ error: "Failed to save resource rating" });
+    }
+  });
+
+  // =========================================================================
+  // SERVER-SIDE GEMINI AI ROUTES (AI Guide Bot + Resources AI Helpers)
+  // =========================================================================
+  const WEBSITE_GUIDE_SYSTEM_INSTRUCTION = `You are "Yard Guide AI", a friendly, intelligent, Gemini-style AI assistant built right into this web platform ("Wayfare Kitchen · The Yard Network").
+
+Your three core roles:
+1. **Website Guide & Navigation Helper**: Answer questions about how the website works, explain any section, and guide users step-by-step on where to click.
+2. **Tips, Tricks & Platform Shortcuts**: Share practical pro-tips, shortcuts, privacy controls, and best practices for getting the most out of every feature.
+3. **General Knowledge Assistant**: Answer ANY general knowledge question clearly, accurately, and concisely (history, science, cooking, coding, finance, resume writing, study help, everyday life, re-entry advice, etc.) just like Gemini.
+
+Complete Website Map (Tabs available in the left sidebar):
+- \`expedition\` (**Expedition profile**): Taste & member preference controls, heat/adventure level, favorite cuisines, holiday delivery schedule, and account plan.
+- \`yard\` (**The Yard**): Community directory & social hub where formerly incarcerated peers connect, signal availability to meet ("yard" status), send private messages ("kites"), and complete a Mentorship Profile Survey.
+- \`mentorship\` (**Mentorship**): Take the 3-step Mentorship Matching Questionnaire (Shared Lived Experiences, Professional Goals, Check-in Cadence), browse match scores, connect anonymously or directly, and track **Shared Mentorship Milestones** with visual progress bars across 4 pillars (Re-Entry, Career, Legal, Wellness).
+- \`kites\` (**Kites**): Private, secure peer-to-peer messaging ("kite" = private message, "yard" = meeting place; includes optional slang tooltips for clarity).
+- \`resources\` (**Resources**): 4-pillar command hub featuring: (1) Mental Health Support & Self-Help Workbooks, (2) 50-State Court Dockets & DOC Locator, (3) Interactive Statutory Sentence Estimator, (4) Parole Officer Contacts & RMOMS Urine Analysis Check-In Guide, plus a **5-Star Community Reliability Rating System** where users rate and verify local services, and a Nearby Re-Entry Services Map.
+- \`forum\` (**Forum**): Community Discussions, Community Guidelines modal, and the **Success Stories** section where formerly incarcerated individuals post and celebrate inspirational re-entry journeys.
+- \`opportunities\` (**Opportunities**): Felony-friendly Jobs board, release-approved Housing directory, and personal Job Application Tracker.
+- \`tools\` (**Legal Tools**): Quick court docket lookup and statutory sentence reference tools.
+- \`mental-health\` (**Wellness**): Dedicated mental health check-ins, grounding tools, and wellness reminders.
+- \`studio\` (**Studio Settings**): Halflight Pictures studio profile and production console settings.
+- \`workspace\` (**Workspace**): Google Slides and Google Keep integrations.
+- \`cases\` (**Case Tracker**): Track personal legal cases, court dates, and hearing reminders.
+- \`progress\` (**Progress Tracker**): Track personal milestones and habits.
+- \`calendar\` (**Calendar**): Schedule appointments, parole check-ins, and community events.
+- \`vault\` (**The Vault**): Securely store important documents (IDs, certificates, resumes, release papers).
+- \`help\` (**Help Center**): Frequently asked questions and support guides.
+- \`profile\` (**Member Profile**): Edit your bio, facility history, location, and privacy toggles.
+
+Navigation Directive Rule:
+Whenever your answer recommends visiting one or more specific pages/tabs in the website, append clean action markers at the very end of your response (one per recommended page, max 3) using this exact format:
+[NAV:tab_id|Button Label]
+or for Success Stories in the Forum:
+[NAV:forum:stories|Open Success Stories]
+Valid tab_ids: expedition, yard, mentorship, kites, resources, forum, opportunities, tools, mental-health, studio, workspace, cases, progress, calendar, vault, help, profile.
+
+Formatting style:
+- Be warm, clear, encouraging, and well-structured with short paragraphs, bullet lists, and bold highlights.
+- Do not fabricate personal data about the user.
+- For legal or medical topics, give helpful general information with a brief note to consult a licensed attorney or healthcare professional for formal advice.`;
+
+  const formatGeminiError = (err: any) => {
+    const rawMsg = err?.message || String(err);
+    const status = err?.status || err?.code || 500;
+    if (rawMsg.includes("GEMINI_API_KEY is not configured")) {
+      return { status: 503, message: rawMsg };
+    }
+    if (status === 403 || status === 400 || rawMsg.includes("API_KEY_INVALID") || rawMsg.includes("PERMISSION_DENIED")) {
+      return {
+        status: 400,
+        message: "The Gemini API key appears invalid or lacks permission. Please verify your API key in Settings > Secrets."
+      };
+    }
+    if (status === 429 || rawMsg.includes("RESOURCE_EXHAUSTED")) {
+      return {
+        status: 429,
+        message: "AI request limit reached right now. Please wait a moment and try again, or check your API quota in Settings > Secrets."
+      };
+    }
+    return { status: 500, message: `AI service error: ${rawMsg}` };
+  };
+
+  app.post("/api/ai/chat", async (req: any, res) => {
+    try {
+      const { messages, activeTab } = req.body || {};
+      if (!Array.isArray(messages) || messages.length === 0) {
+        return res.status(400).json({ error: "Please provide at least one message." });
+      }
+
+      const ai = getGeminiClient();
+      const contents = messages.slice(-16).map((m: any) => ({
+        role: m.role === "model" ? "model" : "user",
+        parts: [{ text: String(m.text || "") }]
+      }));
+
+      const contextNote = activeTab
+        ? `\n\nCurrent user context: The user is currently viewing the "${activeTab}" tab.`
+        : "";
+
+      const response = await ai.models.generateContent({
+        model: "gemini-4-hydrogen",
+        contents,
+        config: {
+          systemInstruction: WEBSITE_GUIDE_SYSTEM_INSTRUCTION + contextNote
+        }
+      });
+
+      const rawText = (response.text || "").trim();
+      const suggestedTabs: { tab: string; subTab?: string; label: string }[] = [];
+      const navRegex = /\[NAV:([a-z0-9-]+)(?::([a-z0-9-]+))?\|([^\]]+)\]/gi;
+
+      let match: RegExpExecArray | null;
+      while ((match = navRegex.exec(rawText)) !== null) {
+        const tab = match[1].toLowerCase();
+        const subTab = match[2] ? match[2].toLowerCase() : undefined;
+        const label = match[3].trim();
+        if (!suggestedTabs.some(t => t.tab === tab && t.subTab === subTab)) {
+          suggestedTabs.push({ tab, subTab, label });
+        }
+      }
+
+      const cleanText = rawText.replace(navRegex, "").trim();
+      res.json({ text: cleanText, suggestedTabs });
+    } catch (err: any) {
+      console.error("AI chat error:", err);
+      const formatted = formatGeminiError(err);
+      res.status(formatted.status).json({ error: formatted.message });
+    }
+  });
+
+  app.post("/api/ai/docket-search", async (req: any, res) => {
+    try {
+      const { state, query } = req.body || {};
+      if (!state) return res.status(400).json({ error: "State is required." });
+
+      const ai = getGeminiClient();
+      const response = await ai.models.generateContent({
+        model: "gemini-4-hydrogen",
+        contents: `Find the official court docket or case search website for ${state}. Also provide step-by-step instructions and search guidance related to: ${query || "criminal court dockets"}`,
+        config: {
+          tools: [{ googleSearch: {} }]
+        }
+      });
+
+      res.json({
+        text: response.text || "",
+        candidates: response.candidates || []
+      });
+    } catch (err: any) {
+      console.error("AI docket search error:", err);
+      const formatted = formatGeminiError(err);
+      res.status(formatted.status).json({ error: formatted.message });
+    }
+  });
+
+  app.post("/api/ai/estimate-sentence", async (req: any, res) => {
+    try {
+      const { crimeDetails } = req.body || {};
+      if (!crimeDetails) return res.status(400).json({ error: "Offense details are required." });
+
+      const ai = getGeminiClient();
+      const response = await ai.models.generateContent({
+        model: "gemini-4-hydrogen",
+        contents: `Act as a legal information assistant. Based on the following details, provide a structured, educational overview of potential statutory sentencing ranges, earned-time/good-time credit rules, and parole eligibility guidelines. Include a clear disclaimer that this is educational information and NOT formal legal advice. Details: ${crimeDetails}`
+      });
+
+      res.json({ text: response.text || "" });
+    } catch (err: any) {
+      console.error("AI sentence estimate error:", err);
+      const formatted = formatGeminiError(err);
+      res.status(formatted.status).json({ error: formatted.message });
+    }
+  });
+
+  app.post("/api/ai/self-help", async (req: any, res) => {
+    try {
+      const { topic } = req.body || {};
+      if (!topic) return res.status(400).json({ error: "Topic is required." });
+
+      const ai = getGeminiClient();
+      const response = await ai.models.generateContent({
+        model: "gemini-4-hydrogen",
+        contents: `Provide a supportive, motivational, and practical self-help guide for someone navigating life after incarceration focusing on: ${topic}. Include actionable daily steps, grounding techniques, and mental health resources.`
+      });
+
+      res.json({ text: response.text || "" });
+    } catch (err: any) {
+      console.error("AI self-help error:", err);
+      const formatted = formatGeminiError(err);
+      res.status(formatted.status).json({ error: formatted.message });
+    }
   });
 
   // Vite middleware for development
