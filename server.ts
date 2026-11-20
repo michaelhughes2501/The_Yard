@@ -369,6 +369,10 @@ try {
 } catch (e) {}
 
 try {
+  db.exec("ALTER TABLE mentorships ADD COLUMN milestones_json TEXT");
+} catch (e) {}
+
+try {
   db.exec("ALTER TABLE kites ADD COLUMN is_anonymous INTEGER DEFAULT 0");
 } catch (e) {}
 
@@ -1235,8 +1239,59 @@ async function startServer() {
     res.json(mentors);
   });
 
+  const getDefaultMentorshipMilestones = (precompletedCount = 2) => [
+    {
+      id: "ms-1",
+      title: "Initial Orientation & 90-Day Re-Entry Roadmap",
+      category: "reentry",
+      completed: precompletedCount >= 1,
+      completed_by: precompletedCount >= 1 ? "Mentor & Mentee" : undefined,
+      completed_at: precompletedCount >= 1 ? new Date(Date.now() - 86400000 * 10).toISOString() : null,
+      due_week: 1
+    },
+    {
+      id: "ms-2",
+      title: "Parole Check-In & RMOMS Compliance Schedule Review",
+      category: "legal",
+      completed: precompletedCount >= 2,
+      completed_by: precompletedCount >= 2 ? "Mentor" : undefined,
+      completed_at: precompletedCount >= 2 ? new Date(Date.now() - 86400000 * 6).toISOString() : null,
+      due_week: 2
+    },
+    {
+      id: "ms-3",
+      title: "Fair-Chance Resume & Conviction Disclosure Prep",
+      category: "career",
+      completed: precompletedCount >= 3,
+      completed_by: precompletedCount >= 3 ? "Mentee" : undefined,
+      completed_at: precompletedCount >= 3 ? new Date(Date.now() - 86400000 * 3).toISOString() : null,
+      due_week: 4
+    },
+    {
+      id: "ms-4",
+      title: "Mock Interview or Vocational Trade Assessment",
+      category: "career",
+      completed: false,
+      due_week: 6
+    },
+    {
+      id: "ms-5",
+      title: "Independent Housing, Banking & Credit Checkpoint",
+      category: "reentry",
+      completed: false,
+      due_week: 8
+    },
+    {
+      id: "ms-6",
+      title: "90-Day Milestone Graduation & Peer Leadership Check",
+      category: "wellness",
+      completed: false,
+      due_week: 12
+    }
+  ];
+
   app.get("/api/mentorships", requireAuth, (req: any, res) => {
-    const mentorships = db.prepare(`
+    let rows = db.prepare(`
       SELECT m.*, 
              u1.username as mentor_name, 
              CASE WHEN m.is_anonymous = 1 AND m.mentor_id = ? THEN 'Anonymous Mentee' ELSE u2.username END as mentee_name
@@ -1245,13 +1300,58 @@ async function startServer() {
       JOIN users u2 ON m.mentee_id = u2.id
       WHERE m.mentor_id = ? OR m.mentee_id = ?
       ORDER BY m.updated_at DESC
-    `).all(req.userId, req.userId, req.userId);
+    `).all(req.userId, req.userId, req.userId) as any[];
+
+    // Seed an initial active mentorship with shared milestones if the user has none yet
+    if (rows.length === 0) {
+      const sampleMentor = db.prepare("SELECT id, username FROM users WHERE is_mentor = 1 AND id != ? LIMIT 1").get(req.userId) as any;
+      if (sampleMentor) {
+        const seedId = crypto.randomUUID();
+        const defaultMilestones = JSON.stringify(getDefaultMentorshipMilestones(3));
+        db.prepare(
+          "INSERT INTO mentorships (id, mentor_id, mentee_id, status, is_anonymous, milestones_json) VALUES (?, ?, ?, 'active', 0, ?)"
+        ).run(seedId, sampleMentor.id, req.userId, defaultMilestones);
+
+        rows = db.prepare(`
+          SELECT m.*, 
+                 u1.username as mentor_name, 
+                 CASE WHEN m.is_anonymous = 1 AND m.mentor_id = ? THEN 'Anonymous Mentee' ELSE u2.username END as mentee_name
+          FROM mentorships m
+          JOIN users u1 ON m.mentor_id = u1.id
+          JOIN users u2 ON m.mentee_id = u2.id
+          WHERE m.mentor_id = ? OR m.mentee_id = ?
+          ORDER BY m.updated_at DESC
+        `).all(req.userId, req.userId, req.userId) as any[];
+      }
+    }
+
+    const mentorships = rows.map(row => {
+      let milestones = [];
+      if (row.milestones_json) {
+        try {
+          milestones = JSON.parse(row.milestones_json);
+        } catch (e) {
+          milestones = getDefaultMentorshipMilestones(row.status === 'completed' ? 6 : 2);
+        }
+      } else {
+        milestones = getDefaultMentorshipMilestones(row.status === 'completed' ? 6 : 2);
+        try {
+          db.prepare("UPDATE mentorships SET milestones_json = ? WHERE id = ?").run(JSON.stringify(milestones), row.id);
+        } catch (e) {}
+      }
+      return {
+        ...row,
+        milestones
+      };
+    });
+
     res.json(mentorships);
   });
 
   app.post("/api/mentorships/request", requireAuth, (req: any, res) => {
-    const { mentorId, message, isAnonymous } = req.body;
+    const { mentorId, message, isAnonymous, activateImmediately } = req.body;
     const isAnonVal = isAnonymous ? 1 : 0;
+    const initialStatus = activateImmediately ? 'active' : 'pending';
     
     // Check if already requested
     const existing = db.prepare("SELECT id FROM mentorships WHERE mentor_id = ? AND mentee_id = ? AND status IN ('pending', 'active')").get(mentorId, req.userId);
@@ -1260,8 +1360,9 @@ async function startServer() {
     }
 
     const id = crypto.randomUUID();
-    db.prepare("INSERT INTO mentorships (id, mentor_id, mentee_id, status, is_anonymous) VALUES (?, ?, ?, 'pending', ?)")
-      .run(id, mentorId, req.userId, isAnonVal);
+    const initialMilestones = JSON.stringify(getDefaultMentorshipMilestones(1));
+    db.prepare("INSERT INTO mentorships (id, mentor_id, mentee_id, status, is_anonymous, milestones_json) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(id, mentorId, req.userId, initialStatus, isAnonVal, initialMilestones);
     
     const mentee = db.prepare("SELECT username FROM users WHERE id = ?").get(req.userId) as any;
     const notifId = crypto.randomUUID();
@@ -1286,7 +1387,40 @@ async function startServer() {
       );
     }
 
-    res.json({ success: true });
+    res.json({ success: true, id });
+  });
+
+  app.put("/api/mentorships/:id/milestones", requireAuth, (req: any, res) => {
+    const { milestones, toggledMilestoneTitle } = req.body;
+    const mentorship = db.prepare("SELECT * FROM mentorships WHERE id = ?").get(req.params.id) as any;
+    if (!mentorship) return res.status(404).json({ error: "Mentorship not found" });
+    if (mentorship.mentor_id !== req.userId && mentorship.mentee_id !== req.userId) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+    if (!Array.isArray(milestones)) {
+      return res.status(400).json({ error: "milestones must be an array" });
+    }
+
+    db.prepare("UPDATE mentorships SET milestones_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+      .run(JSON.stringify(milestones), req.params.id);
+
+    if (toggledMilestoneTitle) {
+      const otherUserId = req.userId === mentorship.mentor_id ? mentorship.mentee_id : mentorship.mentor_id;
+      const actor = db.prepare("SELECT username FROM users WHERE id = ?").get(req.userId) as any;
+      const actorName = (mentorship.is_anonymous === 1 && req.userId === mentorship.mentee_id)
+        ? "Your anonymous mentee"
+        : (actor?.username || "Your mentorship partner");
+      const notifId = crypto.randomUUID();
+      db.prepare("INSERT INTO notifications (id, user_id, type, content, link) VALUES (?, ?, ?, ?, ?)").run(
+        notifId,
+        otherUserId,
+        "mentorship_milestone",
+        `${actorName} updated shared milestone: "${toggledMilestoneTitle}"`,
+        "mentorship"
+      );
+    }
+
+    res.json({ success: true, milestones });
   });
 
   app.put("/api/mentorships/:id/status", requireAuth, (req: any, res) => {

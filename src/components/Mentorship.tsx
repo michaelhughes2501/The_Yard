@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
-import { User, Mentorship } from '../types';
+import { User, Mentorship, MentorshipMilestone } from '../types';
 import {
   Users,
   CheckCircle,
@@ -24,10 +24,87 @@ import {
   RotateCcw,
   Award,
   Compass,
-  AlertCircle
+  AlertCircle,
+  Plus,
+  Target,
+  TrendingUp
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import VideoCallManager from './VideoCallManager';
+
+const DEFAULT_SHARED_MILESTONES: MentorshipMilestone[] = [
+  {
+    id: 'ms-1',
+    title: 'Initial Orientation & 90-Day Re-Entry Roadmap',
+    category: 'reentry',
+    completed: true,
+    completed_by: 'Mentor & Mentee',
+    due_week: 1
+  },
+  {
+    id: 'ms-2',
+    title: 'Parole Check-In & RMOMS Compliance Schedule Review',
+    category: 'legal',
+    completed: true,
+    completed_by: 'Mentor',
+    due_week: 2
+  },
+  {
+    id: 'ms-3',
+    title: 'Fair-Chance Resume & Conviction Disclosure Prep',
+    category: 'career',
+    completed: true,
+    completed_by: 'Mentee',
+    due_week: 4
+  },
+  {
+    id: 'ms-4',
+    title: 'Mock Interview or Vocational Trade Assessment',
+    category: 'career',
+    completed: false,
+    due_week: 6
+  },
+  {
+    id: 'ms-5',
+    title: 'Independent Housing, Banking & Credit Checkpoint',
+    category: 'reentry',
+    completed: false,
+    due_week: 8
+  },
+  {
+    id: 'ms-6',
+    title: '90-Day Milestone Graduation & Peer Leadership Check',
+    category: 'wellness',
+    completed: false,
+    due_week: 12
+  }
+];
+
+const MILESTONE_CATEGORIES: Record<
+  MentorshipMilestone['category'],
+  { label: string; barColor: string; textColor: string }
+> = {
+  reentry: {
+    label: 'Re-Entry Foundation',
+    barColor: 'bg-[#984B27]',
+    textColor: 'text-[#984B27]'
+  },
+  career: {
+    label: 'Career & Vocational',
+    barColor: 'bg-emerald-700',
+    textColor: 'text-emerald-800'
+  },
+  legal: {
+    label: 'Parole & Legal',
+    barColor: 'bg-amber-600',
+    textColor: 'text-amber-800'
+  },
+  wellness: {
+    label: 'Wellness & Leadership',
+    barColor: 'bg-[#261F1A]',
+    textColor: 'text-[#261F1A]'
+  }
+};
 
 const SHARED_EXPERIENCE_OPTIONS = [
   {
@@ -290,6 +367,13 @@ function calculateMatch(
   };
 }
 
+function getPhaseLabel(percent: number): string {
+  if (percent >= 100) return 'All Milestones Complete · Ready to Graduate';
+  if (percent >= 75) return 'Phase 3 · Independent Stability & Leadership';
+  if (percent >= 40) return 'Phase 2 · Career Readiness & Compliance';
+  return 'Phase 1 · Initial Orientation & Foundation';
+}
+
 export default function MentorshipTab() {
   const { user, token } = useAuth();
   const [mentors, setMentors] = useState<User[]>([]);
@@ -300,6 +384,7 @@ export default function MentorshipTab() {
   const [requestMessage, setRequestMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAnonymous, setIsAnonymous] = useState(false);
+  const [activateImmediately, setActivateImmediately] = useState(true);
   const [statusBanner, setStatusBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Active call target state for initiator call overlay
@@ -318,6 +403,13 @@ export default function MentorshipTab() {
   const [showQuestionnaireWizard, setShowQuestionnaireWizard] = useState(false);
   const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1);
   const [isSavingQuestionnaire, setIsSavingQuestionnaire] = useState(false);
+
+  // Shared Milestone UI States
+  const [expandedMilestones, setExpandedMilestones] = useState<Record<string, boolean>>({});
+  const [newMilestoneTitle, setNewMilestoneTitle] = useState<Record<string, string>>({});
+  const [newMilestoneCategory, setNewMilestoneCategory] = useState<
+    Record<string, MentorshipMilestone['category']>
+  >({});
 
   const [filterMode, setFilterMode] = useState<'relevance' | 'experiences' | 'goals' | 'all'>('relevance');
   const [expandedReasons, setExpandedReasons] = useState<Record<string, boolean>>({});
@@ -338,7 +430,6 @@ export default function MentorshipTab() {
           console.error(e);
         }
       }
-      // Fallback to legacy preferences if present
       const legacy = localStorage.getItem(`mentorship_pref_${user.id}`);
       if (legacy) {
         try {
@@ -359,6 +450,106 @@ export default function MentorshipTab() {
       }
     }
   }, [user?.id]);
+
+  const getMentorshipMilestones = (m: Mentorship): MentorshipMilestone[] => {
+    if (Array.isArray(m.milestones) && m.milestones.length > 0) {
+      return m.milestones;
+    }
+    const localSaved = localStorage.getItem(`mentorship_milestones_${m.id}`);
+    if (localSaved) {
+      try {
+        return JSON.parse(localSaved);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return DEFAULT_SHARED_MILESTONES;
+  };
+
+  const handleToggleMilestone = async (mentorship: Mentorship, milestoneId: string) => {
+    const currentList = getMentorshipMilestones(mentorship);
+    const roleLabel = mentorship.mentor_id === user?.id ? 'Mentor' : 'Mentee';
+    let toggledTitle = '';
+
+    const updatedList = currentList.map(ms => {
+      if (ms.id === milestoneId) {
+        const nextCompleted = !ms.completed;
+        toggledTitle = ms.title;
+        return {
+          ...ms,
+          completed: nextCompleted,
+          completed_by: nextCompleted ? roleLabel : undefined,
+          completed_at: nextCompleted ? new Date().toISOString() : null
+        };
+      }
+      return ms;
+    });
+
+    // Optimistic state update
+    setMentorships(prev =>
+      prev.map(item => (item.id === mentorship.id ? { ...item, milestones: updatedList } : item))
+    );
+    localStorage.setItem(`mentorship_milestones_${mentorship.id}`, JSON.stringify(updatedList));
+
+    try {
+      await fetch(`/api/mentorships/${mentorship.id}/milestones`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          milestones: updatedList,
+          toggledMilestoneTitle: toggledTitle
+        })
+      });
+    } catch (err) {
+      console.error('Failed to sync milestone update:', err);
+    }
+  };
+
+  const handleAddCustomMilestone = async (e: React.FormEvent, mentorship: Mentorship) => {
+    e.preventDefault();
+    const title = (newMilestoneTitle[mentorship.id] || '').trim();
+    if (!title) return;
+
+    const category = newMilestoneCategory[mentorship.id] || 'career';
+    const currentList = getMentorshipMilestones(mentorship);
+    const newItem: MentorshipMilestone = {
+      id: `ms-${Date.now()}`,
+      title,
+      category,
+      completed: false,
+      due_week: Math.min(12, currentList.length * 2 + 1)
+    };
+
+    const updatedList = [...currentList, newItem];
+    setMentorships(prev =>
+      prev.map(item => (item.id === mentorship.id ? { ...item, milestones: updatedList } : item))
+    );
+    localStorage.setItem(`mentorship_milestones_${mentorship.id}`, JSON.stringify(updatedList));
+    setNewMilestoneTitle(prev => ({ ...prev, [mentorship.id]: '' }));
+
+    try {
+      await fetch(`/api/mentorships/${mentorship.id}/milestones`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          milestones: updatedList,
+          toggledMilestoneTitle: `Added milestone: ${title}`
+        })
+      });
+      setStatusBanner({
+        type: 'success',
+        text: `Added shared milestone "${title}" to your mentorship roadmap.`
+      });
+    } catch (err) {
+      console.error('Failed to add custom milestone:', err);
+    }
+  };
 
   const persistQuestionnaire = async (updated: MentorshipQuestionnaireData, syncBackend = false) => {
     setQuestionnaire(updated);
@@ -526,7 +717,19 @@ export default function MentorshipTab() {
 
     fetch('/api/mentorships', { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
-      .then(setMentorships);
+      .then((list: Mentorship[]) => {
+        if (Array.isArray(list)) {
+          setMentorships(list);
+          // Expand the first active mentorship's milestones by default
+          const firstActive = list.find(item => item.status === 'active');
+          if (firstActive) {
+            setExpandedMilestones(prev => ({
+              ...prev,
+              [firstActive.id]: prev[firstActive.id] ?? true
+            }));
+          }
+        }
+      });
   };
 
   const toggleMentorStatus = async () => {
@@ -558,7 +761,8 @@ export default function MentorshipTab() {
         body: JSON.stringify({
           mentorId: selectedMentor.id,
           message: requestMessage,
-          isAnonymous: isAnonymous
+          isAnonymous: isAnonymous,
+          activateImmediately: activateImmediately
         })
       });
       if (!res.ok) {
@@ -571,7 +775,9 @@ export default function MentorshipTab() {
       setIsAnonymous(false);
       setStatusBanner({
         type: 'success',
-        text: `Mentorship Kite sent to ${selectedMentor.name}!`
+        text: activateImmediately
+          ? `Shared Mentorship Roadmap started with ${selectedMentor.name}!`
+          : `Mentorship Kite sent to ${selectedMentor.name}!`
       });
       fetchData();
     } catch (err: any) {
@@ -596,10 +802,11 @@ export default function MentorshipTab() {
     if (questionnaire.careerStatement.trim()) {
       intro += `\nMy primary objective right now: "${questionnaire.careerStatement.trim()}"\n`;
     }
-    intro += `\nPreferred Mentorship Style: ${checkinLabel}.\nLooking forward to connecting and learning from your path!`;
+    intro += `\nPreferred Mentorship Style: ${checkinLabel}.\nLooking forward to tracking our shared milestones and learning from your path!`;
 
     setRequestMessage(intro);
     setIsAnonymous(false);
+    setActivateImmediately(true);
     setRequestModalOpen(true);
   };
 
@@ -617,19 +824,284 @@ export default function MentorshipTab() {
 
   const myMentees = mentorships.filter(m => m.mentor_id === user?.id && m.status === 'active');
   const myMentors = mentorships.filter(m => m.mentee_id === user?.id && m.status === 'active');
+  const activeConnections = [...myMentors, ...myMentees];
   const pendingIncoming = mentorships.filter(m => m.mentor_id === user?.id && m.status === 'pending');
   const pendingOutgoing = mentorships.filter(m => m.mentee_id === user?.id && m.status === 'pending');
 
-  return (
-    <div className="space-y-10">
-      <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div className="space-y-3">
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-[#141414] text-[#E4E3E0] text-[10px] font-mono uppercase tracking-widest font-bold">
-            <Compass size={12} className="text-amber-400" /> Peer Re-Entry Guidance & Career Alignment
+  // Aggregate milestone statistics across all active mentorship connections
+  const allActiveMilestones = activeConnections.flatMap(m => getMentorshipMilestones(m));
+  const totalMilestonesCount = allActiveMilestones.length;
+  const completedMilestonesCount = allActiveMilestones.filter(ms => ms.completed).length;
+  const overallProgressPercent =
+    totalMilestonesCount > 0 ? Math.round((completedMilestonesCount / totalMilestonesCount) * 100) : 0;
+
+  const renderSharedMilestoneTracker = (m: Mentorship, isDarkSurface = false) => {
+    const milestones = getMentorshipMilestones(m);
+    const total = milestones.length;
+    const completed = milestones.filter(ms => ms.completed).length;
+    const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+    const isExpanded = expandedMilestones[m.id] ?? true;
+    const partnerRole = m.mentor_id === user?.id ? 'Mentee' : 'Mentor';
+    const partnerName = m.mentor_id === user?.id ? m.mentee_name : m.mentor_name;
+
+    return (
+      <div
+        className={`mt-5 pt-5 border-t ${
+          isDarkSurface ? 'border-white/15' : 'border-[#D8CFC2]'
+        } space-y-4`}
+      >
+        {/* Top Progress Bar Summary */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Target
+                size={14}
+                className={isDarkSurface ? 'text-[#C69249]' : 'text-[#984B27]'}
+              />
+              <span className="text-[11px] uppercase tracking-[0.16em] font-semibold">
+                Shared Milestones with {partnerName}
+              </span>
+            </div>
+            <span className="text-xs font-mono font-bold tabular-nums">
+              {completed}/{total} ({percent}%)
+            </span>
           </div>
-          <h2 className="text-5xl md:text-6xl font-serif italic tracking-tighter">Mentorship</h2>
-          <p className="text-lg opacity-65 max-w-2xl">
-            Complete the matching questionnaire to connect with verified alumni mentors who share your lived experiences and professional career goals.
+
+          {/* Primary Visual Progress Bar with Milestone Node Markers */}
+          <div className="relative pt-1">
+            <div
+              className={`w-full h-3 rounded-full overflow-hidden ${
+                isDarkSurface ? 'bg-white/15' : 'bg-[#E5DDD0]'
+              }`}
+              role="progressbar"
+              aria-valuenow={percent}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label={`Shared mentorship milestone progress with ${partnerName}`}
+            >
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${percent}%` }}
+                transition={{ duration: 0.35, ease: 'easeOut' }}
+                className={`h-full rounded-full ${
+                  percent === 100
+                    ? 'bg-emerald-600'
+                    : isDarkSurface
+                    ? 'bg-[#C69249]'
+                    : 'bg-[#984B27]'
+                }`}
+              />
+            </div>
+
+            {/* 25% / 50% / 75% / 100% Scale Ticks */}
+            <div className="flex justify-between text-[9px] font-mono opacity-60 mt-1 tabular-nums">
+              <span>0%</span>
+              <span>25%</span>
+              <span>50%</span>
+              <span>75%</span>
+              <span>100%</span>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-2 pt-0.5">
+            <span className="text-[11px] opacity-75 font-medium">
+              {getPhaseLabel(percent)}
+            </span>
+            <button
+              type="button"
+              onClick={() =>
+                setExpandedMilestones(prev => ({
+                  ...prev,
+                  [m.id]: !isExpanded
+                }))
+              }
+              className="text-[10px] font-mono uppercase tracking-wider underline hover:opacity-100 opacity-80 cursor-pointer"
+            >
+              {isExpanded ? 'Hide Milestones' : `Manage Milestones (${total})`}
+            </button>
+          </div>
+        </div>
+
+        {/* Expandable Interactive Milestone Checklist & Pillar Progress Bars */}
+        <AnimatePresence>
+          {isExpanded && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.2 }}
+              className="space-y-4 overflow-hidden"
+            >
+              {/* Category Mini Progress Bars */}
+              <div
+                className={`grid grid-cols-2 gap-2.5 p-3 rounded-xl border ${
+                  isDarkSurface
+                    ? 'bg-white/5 border-white/10'
+                    : 'bg-[#EFE7DC]/70 border-[#D8CFC2]'
+                }`}
+              >
+                {(Object.keys(MILESTONE_CATEGORIES) as MentorshipMilestone['category'][]).map(
+                  catKey => {
+                    const catItems = milestones.filter(ms => ms.category === catKey);
+                    const catDone = catItems.filter(ms => ms.completed).length;
+                    const catTotal = catItems.length;
+                    const catPct = catTotal > 0 ? Math.round((catDone / catTotal) * 100) : 0;
+                    const meta = MILESTONE_CATEGORIES[catKey];
+
+                    return (
+                      <div key={catKey} className="space-y-1">
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="font-medium truncate">{meta.label}</span>
+                          <span className="font-mono font-bold tabular-nums opacity-75">
+                            {catDone}/{catTotal}
+                          </span>
+                        </div>
+                        <div
+                          className={`w-full h-1.5 rounded-full overflow-hidden ${
+                            isDarkSurface ? 'bg-white/15' : 'bg-[#DCD2C4]'
+                          }`}
+                        >
+                          <div
+                            className={`h-full rounded-full transition-all duration-300 ${
+                              isDarkSurface ? 'bg-[#C69249]' : meta.barColor
+                            }`}
+                            style={{ width: `${catPct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  }
+                )}
+              </div>
+
+              {/* Shared Milestone Items */}
+              <div className="space-y-2">
+                {milestones.map(ms => {
+                  const catMeta = MILESTONE_CATEGORIES[ms.category] || MILESTONE_CATEGORIES.reentry;
+                  return (
+                    <button
+                      key={ms.id}
+                      type="button"
+                      onClick={() => handleToggleMilestone(m, ms.id)}
+                      className={`w-full text-left p-3 rounded-xl border transition-all flex items-start gap-3 cursor-pointer ${
+                        isDarkSurface
+                          ? ms.completed
+                            ? 'bg-white/10 border-[#C69249]/50 text-[#F7F3EC]'
+                            : 'bg-white/5 border-white/10 text-[#F7F3EC]/80 hover:border-white/30'
+                          : ms.completed
+                          ? 'bg-[#EFE7DC] border-[#984B27]/40 text-[#261F1A]'
+                          : 'bg-[#FAF7F2] border-[#D8CFC2] text-[#261F1A] hover:border-[#984B27]'
+                      }`}
+                    >
+                      <div
+                        className={`w-5 h-5 mt-0.5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${
+                          ms.completed
+                            ? 'bg-[#984B27] border-[#984B27] text-white'
+                            : isDarkSurface
+                            ? 'border-white/40'
+                            : 'border-[#8C7F73]'
+                        }`}
+                      >
+                        {ms.completed && <Check size={12} strokeWidth={3} />}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div
+                          className={`text-xs font-semibold leading-snug ${
+                            ms.completed ? 'line-through opacity-75' : ''
+                          }`}
+                        >
+                          {ms.title}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 text-[10px] opacity-65 mt-1 font-mono">
+                          <span>{catMeta.label}</span>
+                          {ms.due_week && (
+                            <>
+                              <span>·</span>
+                              <span>Target: Week {ms.due_week}</span>
+                            </>
+                          )}
+                          {ms.completed && ms.completed_by && (
+                            <>
+                              <span>·</span>
+                              <span>Checked by {ms.completed_by}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Add Shared Milestone Form */}
+              <form
+                onSubmit={e => handleAddCustomMilestone(e, m)}
+                className="flex flex-col sm:flex-row gap-2 pt-1"
+              >
+                <input
+                  type="text"
+                  value={newMilestoneTitle[m.id] || ''}
+                  onChange={e =>
+                    setNewMilestoneTitle(prev => ({
+                      ...prev,
+                      [m.id]: e.target.value
+                    }))
+                  }
+                  placeholder={`Add shared milestone with ${partnerRole.toLowerCase()}...`}
+                  className={`flex-1 text-xs rounded-xl px-3 py-2 border focus:outline-none ${
+                    isDarkSurface
+                      ? 'bg-white/10 border-white/20 text-[#F7F3EC] placeholder:text-white/45'
+                      : 'bg-[#FAF7F2] border-[#D5CBC0] text-[#261F1A]'
+                  }`}
+                />
+                <div className="flex gap-2">
+                  <select
+                    value={newMilestoneCategory[m.id] || 'career'}
+                    onChange={e =>
+                      setNewMilestoneCategory(prev => ({
+                        ...prev,
+                        [m.id]: e.target.value as MentorshipMilestone['category']
+                      }))
+                    }
+                    className={`text-xs rounded-xl px-2.5 py-2 border focus:outline-none ${
+                      isDarkSurface
+                        ? 'bg-[#261F1A] border-white/20 text-[#F7F3EC]'
+                        : 'bg-[#FAF7F2] border-[#D5CBC0] text-[#261F1A]'
+                    }`}
+                  >
+                    <option value="reentry">Re-Entry</option>
+                    <option value="career">Career</option>
+                    <option value="legal">Legal</option>
+                    <option value="wellness">Wellness</option>
+                  </select>
+                  <button
+                    type="submit"
+                    className="px-3.5 py-2 rounded-xl bg-[#984B27] text-[#F7F3EC] text-xs font-medium flex items-center gap-1 hover:bg-[#823E1E] transition-colors cursor-pointer shrink-0"
+                  >
+                    <Plus size={13} /> Add
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-8">
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div className="space-y-2">
+          <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-[#984B27] font-semibold">
+            <Compass size={13} /> PEER RE-ENTRY GUIDANCE & SHARED MILESTONE TRACKER
+          </div>
+          <h2 className="text-4xl md:text-5xl font-serif text-[#261F1A] tracking-tight">
+            Mentorship & Shared Milestones
+          </h2>
+          <p className="text-sm md:text-base text-[#70655B] max-w-2xl">
+            Find verified alumni mentors through the matching questionnaire and track shared re-entry and career milestones together in real time.
           </p>
         </div>
 
@@ -640,9 +1112,9 @@ export default function MentorshipTab() {
               setWizardStep(1);
               setShowQuestionnaireWizard(!showQuestionnaireWizard);
             }}
-            className="px-5 py-3 bg-amber-500 text-[#141414] border-2 border-[#141414] uppercase tracking-widest text-xs font-black font-mono shadow-[4px_4px_0px_0px_rgba(20,20,20,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all flex items-center gap-2 cursor-pointer"
+            className="px-5 py-3 rounded-xl bg-[#984B27] text-[#F7F3EC] text-xs font-semibold flex items-center gap-2 hover:bg-[#843F1F] transition-all cursor-pointer shadow-xs"
           >
-            <ClipboardList size={16} />
+            <ClipboardList size={15} />
             {showQuestionnaireWizard
               ? 'Close Matching Questionnaire'
               : questionnaire.completed
@@ -653,10 +1125,10 @@ export default function MentorshipTab() {
           <button
             type="button"
             onClick={toggleMentorStatus}
-            className={`px-5 py-3 uppercase tracking-widest text-xs font-bold border-2 border-[#141414] transition-colors cursor-pointer ${
+            className={`px-5 py-3 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
               isMentor
-                ? 'bg-[#141414] text-[#E4E3E0]'
-                : 'bg-white hover:bg-[#141414]/5 text-[#141414]'
+                ? 'bg-[#261F1A] text-[#F6F2EB] border-[#261F1A]'
+                : 'bg-[#F6F2EB] hover:bg-[#261F1A]/5 text-[#261F1A] border-[#D5CBC0]'
             }`}
           >
             {isMentor ? '✓ Active Mentor' : 'Become a Mentor'}
@@ -671,11 +1143,13 @@ export default function MentorshipTab() {
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className={`p-4 border-2 border-[#141414] flex items-center justify-between gap-4 ${
-              statusBanner.type === 'success' ? 'bg-emerald-50 text-emerald-950' : 'bg-red-50 text-red-950'
+            className={`p-4 rounded-2xl border flex items-center justify-between gap-4 ${
+              statusBanner.type === 'success'
+                ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                : 'bg-red-50 border-red-300 text-red-950'
             }`}
           >
-            <div className="flex items-center gap-2.5 text-xs font-mono font-bold">
+            <div className="flex items-center gap-2.5 text-xs font-medium">
               {statusBanner.type === 'success' ? (
                 <CheckCircle size={16} className="text-emerald-700 shrink-0" />
               ) : (
@@ -694,6 +1168,93 @@ export default function MentorshipTab() {
         )}
       </AnimatePresence>
 
+      {/* Aggregate Shared Mentorship Milestone Progress Dashboard Bar */}
+      <section className="bg-[#F6F2EB] border border-[#DDD4C7] rounded-2xl p-6 md:p-7 space-y-5 shadow-xs">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.18em] text-[#984B27] font-semibold mb-1">
+              <TrendingUp size={13} /> SHARED MENTORSHIP ROADMAP PROGRESS
+            </div>
+            <h3 className="text-2xl font-serif text-[#261F1A]">
+              Mentor & Mentee Milestone Completion
+            </h3>
+            <p className="text-xs text-[#74695E] mt-0.5">
+              Both mentors and mentees can check off shared milestones below as you progress through your 90-day re-entry and career plan.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-4 shrink-0">
+            <div className="text-right">
+              <div className="text-2xl font-serif font-bold text-[#261F1A] tabular-nums">
+                {overallProgressPercent}% Complete
+              </div>
+              <div className="text-xs text-[#74695E] font-mono tabular-nums">
+                {completedMilestonesCount} of {totalMilestonesCount} Shared Milestones Done
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Overall Master Visual Progress Bar */}
+        <div className="space-y-1.5">
+          <div
+            className="w-full h-3.5 rounded-full bg-[#E5DDD0] overflow-hidden"
+            role="progressbar"
+            aria-valuenow={overallProgressPercent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="Overall mentorship milestone completion"
+          >
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${overallProgressPercent}%` }}
+              transition={{ duration: 0.4, ease: 'easeOut' }}
+              className="h-full rounded-full bg-[#984B27]"
+            />
+          </div>
+          <div className="flex justify-between text-[10px] font-mono text-[#7D7166] tabular-nums">
+            <span>Week 1 · Orientation</span>
+            <span>Week 4 · Career & Parole Prep</span>
+            <span>Week 8 · Housing & Credit</span>
+            <span>Week 12 · Graduation</span>
+          </div>
+        </div>
+
+        {/* 4-Pillar Progress Breakdown */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+          {(Object.keys(MILESTONE_CATEGORIES) as MentorshipMilestone['category'][]).map(catKey => {
+            const catItems = allActiveMilestones.filter(ms => ms.category === catKey);
+            const catDone = catItems.filter(ms => ms.completed).length;
+            const catTotal = catItems.length;
+            const catPct = catTotal > 0 ? Math.round((catDone / catTotal) * 100) : 0;
+            const meta = MILESTONE_CATEGORIES[catKey];
+
+            return (
+              <div
+                key={catKey}
+                className="p-4 rounded-xl bg-[#EFE7DC]/70 border border-[#D8CFC2] space-y-2"
+              >
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-[#261F1A]">{meta.label}</span>
+                  <span className="font-mono font-bold text-[#984B27] tabular-nums">
+                    {catPct}%
+                  </span>
+                </div>
+                <div className="w-full h-2 rounded-full bg-[#DCD2C4] overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-300 ${meta.barColor}`}
+                    style={{ width: `${catPct}%` }}
+                  />
+                </div>
+                <div className="text-[11px] text-[#74695E] font-mono tabular-nums">
+                  {catDone} of {catTotal} milestones completed
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
       {/* Interactive Multi-Step Mentorship Matching Questionnaire */}
       <AnimatePresence>
         {showQuestionnaireWizard && (
@@ -701,15 +1262,15 @@ export default function MentorshipTab() {
             initial={{ opacity: 0, y: -12 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -12 }}
-            className="bg-white border-2 border-[#141414] shadow-[8px_8px_0px_0px_rgba(20,20,20,1)] overflow-hidden"
+            className="bg-[#F6F2EB] border border-[#DDD4C7] rounded-2xl shadow-md overflow-hidden"
           >
-            <div className="bg-[#141414] text-[#E4E3E0] p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="bg-[#261F1A] text-[#F7F3EC] p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <div className="flex items-center gap-2 text-amber-400 text-[10px] font-mono uppercase tracking-widest font-bold mb-1">
+                <div className="flex items-center gap-2 text-[#C69249] text-[10px] font-mono uppercase tracking-widest font-bold mb-1">
                   <Sparkles size={12} /> Personalized Mentor Discovery Wizard
                 </div>
-                <h3 className="text-2xl font-serif italic">Mentorship Matching Questionnaire</h3>
-                <p className="text-xs text-[#E4E3E0]/70 mt-1">
+                <h3 className="text-2xl font-serif">Mentorship Matching Questionnaire</h3>
+                <p className="text-xs text-[#B8AFA4] mt-1">
                   Match with verified mentors based on shared incarceration/re-entry experiences and professional career goals.
                 </p>
               </div>
@@ -725,10 +1286,10 @@ export default function MentorshipTab() {
                     key={item.step}
                     type="button"
                     onClick={() => setWizardStep(item.step as 1 | 2 | 3)}
-                    className={`px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider font-bold border transition-all cursor-pointer ${
+                    className={`px-3 py-1.5 rounded-lg text-[10px] font-mono uppercase tracking-wider font-bold border transition-all cursor-pointer ${
                       wizardStep === item.step
-                        ? 'bg-amber-400 text-[#141414] border-amber-400'
-                        : 'bg-white/10 text-[#E4E3E0]/80 border-white/20 hover:bg-white/20'
+                        ? 'bg-[#984B27] text-[#F7F3EC] border-[#984B27]'
+                        : 'bg-white/10 text-[#F7F3EC]/80 border-white/20 hover:bg-white/20'
                     }`}
                   >
                     {item.label}
@@ -740,16 +1301,16 @@ export default function MentorshipTab() {
             <form onSubmit={handleCompleteQuestionnaire} className="p-6 md:p-8 space-y-6">
               {wizardStep === 1 && (
                 <div className="space-y-6">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#141414]/10 pb-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#D8CFC2] pb-4">
                     <div>
-                      <h4 className="text-lg font-serif italic font-bold flex items-center gap-2">
-                        <HeartHandshake size={20} className="text-amber-600" /> Step 1: Shared Lived Experiences
+                      <h4 className="text-lg font-serif font-bold flex items-center gap-2">
+                        <HeartHandshake size={20} className="text-[#984B27]" /> Step 1: Shared Lived Experiences
                       </h4>
-                      <p className="text-xs opacity-70 mt-0.5">
+                      <p className="text-xs text-[#74695E] mt-0.5">
                         Select the correctional backgrounds and re-entry chapters you want your mentor to understand firsthand.
                       </p>
                     </div>
-                    <span className="text-[11px] font-mono font-bold bg-[#141414]/5 px-3 py-1 border border-[#141414]/20">
+                    <span className="text-[11px] font-mono font-bold bg-[#EFE7DC] px-3 py-1 rounded-lg border border-[#D8CFC2]">
                       {questionnaire.sharedExperiences.length} Selected
                     </span>
                   </div>
@@ -762,22 +1323,22 @@ export default function MentorshipTab() {
                           key={opt.id}
                           type="button"
                           onClick={() => toggleSharedExperience(opt.id)}
-                          className={`text-left p-4 border-2 transition-all cursor-pointer flex items-start gap-3 ${
+                          className={`text-left p-4 rounded-xl border transition-all cursor-pointer flex items-start gap-3 ${
                             selected
-                              ? 'bg-[#141414] text-[#E4E3E0] border-[#141414] shadow-[3px_3px_0px_0px_rgba(245,158,11,1)]'
-                              : 'bg-white text-[#141414] border-[#141414]/20 hover:border-[#141414]'
+                              ? 'bg-[#261F1A] text-[#F7F3EC] border-[#261F1A]'
+                              : 'bg-[#FAF7F2] text-[#261F1A] border-[#D8CFC2] hover:border-[#261F1A]'
                           }`}
                         >
                           <div
-                            className={`w-5 h-5 mt-0.5 border flex items-center justify-center shrink-0 ${
-                              selected ? 'bg-amber-400 border-amber-400 text-[#141414]' : 'border-[#141414]/40'
+                            className={`w-5 h-5 mt-0.5 rounded-md border flex items-center justify-center shrink-0 ${
+                              selected ? 'bg-[#984B27] border-[#984B27] text-white' : 'border-[#8C7F73]'
                             }`}
                           >
                             {selected && <Check size={13} strokeWidth={3} />}
                           </div>
                           <div>
-                            <div className="text-xs font-mono uppercase tracking-wider font-bold">{opt.label}</div>
-                            <div className={`text-xs mt-1 leading-relaxed ${selected ? 'text-[#E4E3E0]/75' : 'text-[#141414]/65'}`}>
+                            <div className="text-xs font-semibold">{opt.label}</div>
+                            <div className={`text-xs mt-1 leading-relaxed ${selected ? 'text-[#F7F3EC]/75' : 'text-[#74695E]'}`}>
                               {opt.description}
                             </div>
                           </div>
@@ -797,10 +1358,10 @@ export default function MentorshipTab() {
                             key={b.id}
                             type="button"
                             onClick={() => persistQuestionnaire({ ...questionnaire, timeServedBracket: b.id })}
-                            className={`p-2.5 text-xs font-mono font-bold border transition-all cursor-pointer ${
+                            className={`p-2.5 rounded-xl text-xs font-medium border transition-all cursor-pointer ${
                               questionnaire.timeServedBracket === b.id
-                                ? 'bg-[#141414] text-[#E4E3E0] border-[#141414]'
-                                : 'bg-white border-[#141414]/25 hover:border-[#141414]'
+                                ? 'bg-[#261F1A] text-[#F7F3EC] border-[#261F1A]'
+                                : 'bg-[#FAF7F2] border-[#D8CFC2] hover:border-[#261F1A]'
                             }`}
                           >
                             {b.label}
@@ -816,7 +1377,7 @@ export default function MentorshipTab() {
                       <select
                         value={questionnaire.reentryStage}
                         onChange={e => persistQuestionnaire({ ...questionnaire, reentryStage: e.target.value })}
-                        className="w-full p-2.5 text-xs font-mono font-bold border-2 border-[#141414] bg-white outline-none"
+                        className="w-full p-2.5 rounded-xl text-xs font-medium border border-[#D8CFC2] bg-[#FAF7F2] outline-none"
                       >
                         <option value="First 90 Days Home / Transitional">First 90 Days Home / Transitional</option>
                         <option value="On Active Parole / RMOMS Supervision">On Active Parole / RMOMS Supervision</option>
@@ -831,16 +1392,16 @@ export default function MentorshipTab() {
 
               {wizardStep === 2 && (
                 <div className="space-y-6">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#141414]/10 pb-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#D8CFC2] pb-4">
                     <div>
-                      <h4 className="text-lg font-serif italic font-bold flex items-center gap-2">
+                      <h4 className="text-lg font-serif font-bold flex items-center gap-2">
                         <Briefcase size={20} className="text-emerald-700" /> Step 2: Professional & Career Goals
                       </h4>
-                      <p className="text-xs opacity-70 mt-0.5">
+                      <p className="text-xs text-[#74695E] mt-0.5">
                         Choose the industries, trades, or professional milestones where you want hands-on mentorship.
                       </p>
                     </div>
-                    <span className="text-[11px] font-mono font-bold bg-[#141414]/5 px-3 py-1 border border-[#141414]/20">
+                    <span className="text-[11px] font-mono font-bold bg-[#EFE7DC] px-3 py-1 rounded-lg border border-[#D8CFC2]">
                       {questionnaire.professionalGoals.length} Selected
                     </span>
                   </div>
@@ -853,22 +1414,22 @@ export default function MentorshipTab() {
                           key={opt.id}
                           type="button"
                           onClick={() => toggleProfessionalGoal(opt.id)}
-                          className={`text-left p-4 border-2 transition-all cursor-pointer flex items-start gap-3 ${
+                          className={`text-left p-4 rounded-xl border transition-all cursor-pointer flex items-start gap-3 ${
                             selected
-                              ? 'bg-[#141414] text-[#E4E3E0] border-[#141414] shadow-[3px_3px_0px_0px_rgba(16,185,129,1)]'
-                              : 'bg-white text-[#141414] border-[#141414]/20 hover:border-[#141414]'
+                              ? 'bg-[#261F1A] text-[#F7F3EC] border-[#261F1A]'
+                              : 'bg-[#FAF7F2] text-[#261F1A] border-[#D8CFC2] hover:border-[#261F1A]'
                           }`}
                         >
                           <div
-                            className={`w-5 h-5 mt-0.5 border flex items-center justify-center shrink-0 ${
-                              selected ? 'bg-emerald-400 border-emerald-400 text-[#141414]' : 'border-[#141414]/40'
+                            className={`w-5 h-5 mt-0.5 rounded-md border flex items-center justify-center shrink-0 ${
+                              selected ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-[#8C7F73]'
                             }`}
                           >
                             {selected && <Check size={13} strokeWidth={3} />}
                           </div>
                           <div>
-                            <div className="text-xs font-mono uppercase tracking-wider font-bold">{opt.label}</div>
-                            <div className={`text-xs mt-1 leading-relaxed ${selected ? 'text-[#E4E3E0]/75' : 'text-[#141414]/65'}`}>
+                            <div className="text-xs font-semibold">{opt.label}</div>
+                            <div className={`text-xs mt-1 leading-relaxed ${selected ? 'text-[#F7F3EC]/75' : 'text-[#74695E]'}`}>
                               {opt.description}
                             </div>
                           </div>
@@ -881,11 +1442,11 @@ export default function MentorshipTab() {
 
               {wizardStep === 3 && (
                 <div className="space-y-6">
-                  <div className="border-b border-[#141414]/10 pb-4">
-                    <h4 className="text-lg font-serif italic font-bold flex items-center gap-2">
-                      <Award size={20} className="text-amber-600" /> Step 3: Mentorship Format & Personal Goal Statement
+                  <div className="border-b border-[#D8CFC2] pb-4">
+                    <h4 className="text-lg font-serif font-bold flex items-center gap-2">
+                      <Award size={20} className="text-[#984B27]" /> Step 3: Mentorship Format & Personal Goal Statement
                     </h4>
-                    <p className="text-xs opacity-70 mt-0.5">
+                    <p className="text-xs text-[#74695E] mt-0.5">
                       Define how you prefer to communicate and what a successful 90-day mentorship looks like for you.
                     </p>
                   </div>
@@ -900,14 +1461,14 @@ export default function MentorshipTab() {
                           key={style.id}
                           type="button"
                           onClick={() => persistQuestionnaire({ ...questionnaire, checkinStyle: style.id })}
-                          className={`p-3.5 text-left border-2 font-mono text-xs font-bold transition-all cursor-pointer flex items-center justify-between ${
+                          className={`p-3.5 text-left rounded-xl border text-xs font-semibold transition-all cursor-pointer flex items-center justify-between ${
                             questionnaire.checkinStyle === style.id
-                              ? 'bg-[#141414] text-[#E4E3E0] border-[#141414]'
-                              : 'bg-white text-[#141414] border-[#141414]/25 hover:border-[#141414]'
+                              ? 'bg-[#261F1A] text-[#F7F3EC] border-[#261F1A]'
+                              : 'bg-[#FAF7F2] text-[#261F1A] border-[#D8CFC2] hover:border-[#261F1A]'
                           }`}
                         >
                           <span>{style.label}</span>
-                          {questionnaire.checkinStyle === style.id && <Check size={14} className="text-amber-400" />}
+                          {questionnaire.checkinStyle === style.id && <Check size={14} className="text-[#C69249]" />}
                         </button>
                       ))}
                     </div>
@@ -922,20 +1483,20 @@ export default function MentorshipTab() {
                       onChange={e => persistQuestionnaire({ ...questionnaire, careerStatement: e.target.value })}
                       rows={3}
                       placeholder="e.g., Looking for a mentor who transitioned from a state facility into commercial welding or tech, and can help me navigate parole check-ins while studying for certifications."
-                      className="w-full border-2 border-[#141414] p-3 text-sm font-medium focus:outline-none bg-neutral-50"
+                      className="w-full rounded-xl border border-[#D8CFC2] p-3 text-sm font-medium focus:outline-none bg-[#FAF7F2]"
                     />
                   </div>
                 </div>
               )}
 
               {/* Wizard Footer Controls */}
-              <div className="pt-4 border-t border-[#141414]/15 flex flex-wrap items-center justify-between gap-3">
+              <div className="pt-4 border-t border-[#D8CFC2] flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   {wizardStep > 1 && (
                     <button
                       type="button"
                       onClick={() => setWizardStep((wizardStep - 1) as 1 | 2 | 3)}
-                      className="px-4 py-2.5 border border-[#141414] text-xs font-mono uppercase tracking-wider font-bold flex items-center gap-1 hover:bg-[#141414]/5 cursor-pointer"
+                      className="px-4 py-2.5 rounded-xl border border-[#D8CFC2] text-xs font-medium flex items-center gap-1 hover:border-[#261F1A] cursor-pointer"
                     >
                       <ChevronLeft size={14} /> Previous
                     </button>
@@ -943,7 +1504,7 @@ export default function MentorshipTab() {
                   <button
                     type="button"
                     onClick={handleResetQuestionnaire}
-                    className="px-3 py-2.5 text-xs font-mono uppercase tracking-wider opacity-60 hover:opacity-100 flex items-center gap-1 cursor-pointer"
+                    className="px-3 py-2.5 text-xs opacity-60 hover:opacity-100 flex items-center gap-1 cursor-pointer"
                   >
                     <RotateCcw size={13} /> Reset
                   </button>
@@ -954,7 +1515,7 @@ export default function MentorshipTab() {
                     <button
                       type="button"
                       onClick={() => setWizardStep((wizardStep + 1) as 1 | 2 | 3)}
-                      className="px-6 py-2.5 bg-[#141414] text-[#E4E3E0] text-xs font-mono uppercase tracking-widest font-bold flex items-center gap-1.5 hover:bg-neutral-800 cursor-pointer"
+                      className="px-6 py-2.5 rounded-xl bg-[#261F1A] text-[#F7F3EC] text-xs font-semibold flex items-center gap-1.5 hover:bg-[#3A3028] cursor-pointer"
                     >
                       Next Step <ChevronRight size={14} />
                     </button>
@@ -962,7 +1523,7 @@ export default function MentorshipTab() {
                     <button
                       type="submit"
                       disabled={isSavingQuestionnaire}
-                      className="px-6 py-3 bg-emerald-600 text-white border-2 border-[#141414] text-xs font-mono uppercase tracking-widest font-black shadow-[3px_3px_0px_0px_rgba(20,20,20,1)] hover:bg-emerald-700 transition-all cursor-pointer disabled:opacity-50"
+                      className="px-6 py-3 rounded-xl bg-[#984B27] text-[#F7F3EC] text-xs font-semibold hover:bg-[#843F1F] transition-all cursor-pointer disabled:opacity-50"
                     >
                       {isSavingQuestionnaire ? 'Calculating Mentor Matches...' : 'Save & Find Matching Mentors'}
                     </button>
@@ -975,101 +1536,79 @@ export default function MentorshipTab() {
       </AnimatePresence>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Left Column: Active & Pending Mentorships (5 cols) */}
-        <div className="lg:col-span-5 space-y-8">
+        {/* Left Column: Active Mentorships & Shared Milestone Checklists (5 cols) */}
+        <div className="lg:col-span-5 space-y-6">
           {/* Questionnaire Summary Card */}
-          <div className="bg-white border-2 border-[#141414] p-5 space-y-4">
+          <div className="bg-[#F6F2EB] border border-[#DDD4C7] rounded-2xl p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-xs uppercase tracking-widest font-black font-mono flex items-center gap-2">
-                <ClipboardList size={15} className="text-amber-600" /> Your Matching Profile
+              <h3 className="text-xs uppercase tracking-[0.16em] font-semibold text-[#7D7166] flex items-center gap-2">
+                <ClipboardList size={14} className="text-[#984B27]" /> Your Matching Profile
               </h3>
               <button
                 type="button"
                 onClick={() => setShowQuestionnaireWizard(true)}
-                className="text-[10px] font-mono uppercase tracking-wider font-bold underline hover:text-amber-700 cursor-pointer"
+                className="text-xs font-semibold text-[#984B27] hover:underline cursor-pointer"
               >
                 {questionnaire.completed ? 'Update Answers' : 'Complete Questionnaire'}
               </button>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div className="p-3 bg-amber-50/70 border border-amber-900/20">
-                <div className="text-[10px] font-mono uppercase tracking-wider text-amber-900/70 font-bold">
+              <div className="p-3.5 rounded-xl bg-[#EFE7DC]/70 border border-[#D8CFC2]">
+                <div className="text-[10px] uppercase tracking-wider text-[#7D7166] font-semibold">
                   Shared Experiences
                 </div>
-                <div className="text-lg font-serif italic font-bold text-amber-950 mt-0.5">
+                <div className="text-lg font-serif font-bold text-[#261F1A] mt-0.5 tabular-nums">
                   {questionnaire.sharedExperiences.length} Active Filters
                 </div>
               </div>
-              <div className="p-3 bg-emerald-50/70 border border-emerald-900/20">
-                <div className="text-[10px] font-mono uppercase tracking-wider text-emerald-900/70 font-bold">
+              <div className="p-3.5 rounded-xl bg-[#EFE7DC]/70 border border-[#D8CFC2]">
+                <div className="text-[10px] uppercase tracking-wider text-[#7D7166] font-semibold">
                   Professional Goals
                 </div>
-                <div className="text-lg font-serif italic font-bold text-emerald-950 mt-0.5">
+                <div className="text-lg font-serif font-bold text-[#261F1A] mt-0.5 tabular-nums">
                   {questionnaire.professionalGoals.length} Career Tracks
                 </div>
               </div>
             </div>
-
-            {(questionnaire.sharedExperiences.length > 0 || questionnaire.professionalGoals.length > 0) && (
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {questionnaire.sharedExperiences.map(id => {
-                  const opt = SHARED_EXPERIENCE_OPTIONS.find(o => o.id === id);
-                  return opt ? (
-                    <span
-                      key={id}
-                      className="text-[10px] font-mono bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 font-bold"
-                    >
-                      {opt.label}
-                    </span>
-                  ) : null;
-                })}
-                {questionnaire.professionalGoals.map(id => {
-                  const opt = PROFESSIONAL_GOAL_OPTIONS.find(o => o.id === id);
-                  return opt ? (
-                    <span
-                      key={id}
-                      className="text-[10px] font-mono bg-emerald-100 text-emerald-900 border border-emerald-300 px-2 py-0.5 font-bold"
-                    >
-                      {opt.label}
-                    </span>
-                  ) : null;
-                })}
-              </div>
-            )}
           </div>
 
           {/* Pending Requests (Incoming) */}
           {pendingIncoming.length > 0 && (
-            <section>
-              <h3 className="text-xs uppercase tracking-widest font-bold mb-4 flex items-center gap-2">
-                <Clock size={16} /> Pending Requests
+            <section className="space-y-3">
+              <h3 className="text-xs uppercase tracking-[0.16em] font-semibold text-[#7D7166] flex items-center gap-2">
+                <Clock size={15} /> Pending Requests
               </h3>
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {pendingIncoming.map(m => (
-                  <div key={m.id} className="bg-white border border-[#141414] p-4 flex justify-between items-center">
+                  <div
+                    key={m.id}
+                    className="bg-[#F6F2EB] border border-[#DDD4C7] rounded-2xl p-4 flex justify-between items-center"
+                  >
                     <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                      <div>
-                        <span className="font-bold">{m.mentee_name}</span> wants you as a mentor.
+                      <div className="text-sm">
+                        <span className="font-bold">{m.mentee_name}</span> requested you as a mentor.
                       </div>
                       {m.is_anonymous === 1 && (
-                        <span className="inline-flex items-center gap-1 text-[9px] font-mono uppercase tracking-widest font-black bg-amber-100 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded-sm self-start sm:self-auto">
-                          Anonymous Query
+                        <span className="text-[10px] font-mono text-[#984B27]">
+                          · Anonymous Query
                         </span>
                       )}
                     </div>
                     <div className="flex gap-2">
                       <button
+                        type="button"
                         onClick={() => updateStatus(m.id, 'active')}
-                        className="p-2 hover:bg-green-100 text-green-700 rounded-full border border-green-200 select-none cursor-pointer"
+                        className="p-2 hover:bg-emerald-100 text-emerald-700 rounded-full border border-emerald-200 cursor-pointer"
                       >
-                        <CheckCircle size={20} />
+                        <CheckCircle size={18} />
                       </button>
                       <button
+                        type="button"
                         onClick={() => updateStatus(m.id, 'declined')}
-                        className="p-2 hover:bg-red-100 text-red-700 rounded-full border border-red-200 select-none cursor-pointer"
+                        className="p-2 hover:bg-red-100 text-red-700 rounded-full border border-red-200 cursor-pointer"
                       >
-                        <XCircle size={20} />
+                        <XCircle size={18} />
                       </button>
                     </div>
                   </div>
@@ -1078,85 +1617,130 @@ export default function MentorshipTab() {
             </section>
           )}
 
-          {/* Active Mentorships */}
-          <section>
-            <h3 className="text-xs uppercase tracking-widest font-bold mb-4 flex items-center gap-2">
-              <ShieldCheck size={16} /> Active Connections
+          {/* Active Mentorships with Shared Milestone Progress Bars */}
+          <section className="space-y-4">
+            <h3 className="text-xs uppercase tracking-[0.16em] font-semibold text-[#7D7166] flex items-center gap-2">
+              <ShieldCheck size={15} className="text-[#984B27]" /> Active Connections & Shared Milestones
             </h3>
-            <div className="space-y-4">
+            <div className="space-y-5">
               {myMentors.map(m => (
-                <div key={m.id} className="bg-[#141414] text-[#E4E3E0] p-6 relative">
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="text-[10px] uppercase tracking-widest opacity-60">Your Mentor</div>
+                <div
+                  key={m.id}
+                  className="bg-[#261F1A] text-[#F7F3EC] rounded-2xl p-6 relative shadow-sm"
+                >
+                  <div className="flex justify-between items-start mb-1">
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-[#C69249]">
+                      Your Mentor
+                    </div>
                     {m.is_anonymous === 1 && (
-                      <span className="text-[9px] font-mono bg-white/10 text-amber-300 px-2 py-0.5 rounded-sm font-bold uppercase tracking-wider">
+                      <span className="text-[10px] font-mono text-[#C69249]">
                         Connected Anonymously
                       </span>
                     )}
                   </div>
-                  <div className="text-2xl font-serif italic mb-4">{m.mentor_name}</div>
-                  <div className="flex justify-between items-center">
+                  <div className="text-2xl font-serif mb-4">{m.mentor_name}</div>
+                  <div className="flex justify-between items-center flex-wrap gap-2">
                     <div className="flex gap-4">
-                      <button className="text-xs uppercase tracking-widest flex items-center gap-2 hover:opacity-80">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          window.dispatchEvent(new CustomEvent('changeTab', { detail: 'kites' }))
+                        }
+                        className="text-xs flex items-center gap-1.5 hover:opacity-80 cursor-pointer"
+                      >
                         <MessageSquare size={14} /> Send Kite
                       </button>
                       <button
+                        type="button"
                         onClick={() => setActiveCallTarget({ id: m.mentor_id, username: m.mentor_name })}
-                        className="text-xs uppercase tracking-widest flex items-center gap-2 text-amber-400 hover:text-amber-300 font-bold cursor-pointer"
+                        className="text-xs flex items-center gap-1.5 text-[#C69249] hover:opacity-80 font-semibold cursor-pointer"
                       >
                         <Video size={14} /> Video Call
                       </button>
                     </div>
                     <button
+                      type="button"
                       onClick={() => updateStatus(m.id, 'completed')}
-                      className="text-xs uppercase tracking-widest opacity-60 hover:opacity-100 cursor-pointer"
+                      className="text-xs opacity-65 hover:opacity-100 cursor-pointer"
                     >
                       Mark Completed
                     </button>
                   </div>
+
+                  {/* Shared Milestone Progress Bar & Interactive Checklist */}
+                  {renderSharedMilestoneTracker(m, true)}
                 </div>
               ))}
+
               {myMentees.map(m => (
-                <div key={m.id} className="bg-white border border-[#141414] p-6 relative">
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="text-[10px] uppercase tracking-widest opacity-60">Your Mentee</div>
+                <div
+                  key={m.id}
+                  className="bg-[#F6F2EB] border border-[#DDD4C7] rounded-2xl p-6 relative shadow-xs"
+                >
+                  <div className="flex justify-between items-start mb-1">
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-[#984B27] font-semibold">
+                      Your Mentee
+                    </div>
                     {m.is_anonymous === 1 && (
-                      <span className="text-[9px] font-mono bg-neutral-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-sm font-bold uppercase tracking-wider">
+                      <span className="text-[10px] font-mono text-[#984B27]">
                         Anonymous Connection
                       </span>
                     )}
                   </div>
-                  <div className="text-2xl font-serif italic mb-4">{m.mentee_name}</div>
-                  <div className="flex justify-between items-center">
+                  <div className="text-2xl font-serif text-[#261F1A] mb-4">{m.mentee_name}</div>
+                  <div className="flex justify-between items-center flex-wrap gap-2">
                     <div className="flex gap-4">
-                      <button className="text-xs uppercase tracking-widest flex items-center gap-2 hover:opacity-80">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          window.dispatchEvent(new CustomEvent('changeTab', { detail: 'kites' }))
+                        }
+                        className="text-xs flex items-center gap-1.5 hover:opacity-80 cursor-pointer"
+                      >
                         <MessageSquare size={14} /> Send Kite
                       </button>
                       {m.is_anonymous === 1 ? (
-                        <div className="text-[11px] text-zinc-500 flex items-center gap-1 font-medium font-mono">
+                        <div className="text-xs text-[#7D7166] flex items-center gap-1">
                           <Video size={14} className="opacity-60" /> Video Call Off (Anonymized)
                         </div>
                       ) : (
                         <button
+                          type="button"
                           onClick={() => setActiveCallTarget({ id: m.mentee_id, username: m.mentee_name })}
-                          className="text-xs uppercase tracking-widest flex items-center gap-2 text-amber-600 hover:text-amber-500 font-bold cursor-pointer"
+                          className="text-xs flex items-center gap-1.5 text-[#984B27] font-semibold cursor-pointer"
                         >
                           <Video size={14} /> Video Call
                         </button>
                       )}
                     </div>
                     <button
+                      type="button"
                       onClick={() => updateStatus(m.id, 'completed')}
-                      className="text-xs uppercase tracking-widest opacity-60 hover:opacity-100 cursor-pointer"
+                      className="text-xs opacity-65 hover:opacity-100 cursor-pointer"
                     >
                       Mark Completed
                     </button>
                   </div>
+
+                  {/* Shared Milestone Progress Bar & Interactive Checklist */}
+                  {renderSharedMilestoneTracker(m, false)}
                 </div>
               ))}
+
               {myMentors.length === 0 && myMentees.length === 0 && (
-                <div className="p-6 border border-[#141414]/20 text-center opacity-60 text-sm">
-                  No active mentorships yet. Use the questionnaire on the right to find a mentor.
+                <div className="p-6 rounded-2xl bg-[#F6F2EB] border border-[#DDD4C7] text-center space-y-3">
+                  <p className="text-sm text-[#74695E]">
+                    No active mentorships yet. Select a mentor on the right to start a shared 90-day milestone roadmap.
+                  </p>
+                  {mentors.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => openRequestModal(mentors[0])}
+                      className="px-4 py-2 rounded-xl bg-[#984B27] text-[#F7F3EC] text-xs font-semibold cursor-pointer"
+                    >
+                      Start Shared Roadmap with {mentors[0].name}
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -1165,19 +1749,19 @@ export default function MentorshipTab() {
 
         {/* Right Column: Alignment Engine & Verified Mentor Directory (7 cols) */}
         <section className="lg:col-span-7 space-y-6">
-          <div className="bg-[#141414]/5 border-2 border-[#141414] p-5 space-y-4">
-            <div className="flex justify-between items-center flex-wrap gap-2">
-              <h3 className="text-sm uppercase tracking-widest font-black flex items-center gap-2 text-[#141414]">
-                <Sparkles size={16} className="text-[#141414]" /> Alignment Engine & Quick Filters
+          <div className="bg-[#F6F2EB] border border-[#DDD4C7] rounded-2xl p-6 space-y-5 shadow-xs">
+            <div className="flex justify-between items-center flex-wrap gap-3">
+              <h3 className="text-sm font-serif font-bold flex items-center gap-2 text-[#261F1A]">
+                <Sparkles size={16} className="text-[#984B27]" /> Alignment Engine & Quick Filters
               </h3>
-              <div className="flex flex-wrap gap-1 border border-[#141414] p-0.5 bg-white">
+              <div className="flex flex-wrap gap-1 border border-[#D8CFC2] rounded-xl p-1 bg-[#FAF7F2]">
                 <button
                   type="button"
                   onClick={() => setFilterMode('relevance')}
-                  className={`px-2.5 py-1 text-[9px] font-mono uppercase tracking-wider font-bold transition-all cursor-pointer ${
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                     filterMode === 'relevance'
-                      ? 'bg-[#141414] text-[#E4E3E0]'
-                      : 'hover:bg-[#141414]/5 text-[#141414]'
+                      ? 'bg-[#261F1A] text-[#F6F2EB]'
+                      : 'hover:bg-[#261F1A]/5 text-[#6E6359]'
                   }`}
                 >
                   Best Overall
@@ -1185,10 +1769,10 @@ export default function MentorshipTab() {
                 <button
                   type="button"
                   onClick={() => setFilterMode('experiences')}
-                  className={`px-2.5 py-1 text-[9px] font-mono uppercase tracking-wider font-bold transition-all cursor-pointer ${
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                     filterMode === 'experiences'
-                      ? 'bg-amber-600 text-white'
-                      : 'hover:bg-[#141414]/5 text-[#141414]'
+                      ? 'bg-[#984B27] text-white'
+                      : 'hover:bg-[#261F1A]/5 text-[#6E6359]'
                   }`}
                 >
                   Shared Experiences
@@ -1196,10 +1780,10 @@ export default function MentorshipTab() {
                 <button
                   type="button"
                   onClick={() => setFilterMode('goals')}
-                  className={`px-2.5 py-1 text-[9px] font-mono uppercase tracking-wider font-bold transition-all cursor-pointer ${
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                     filterMode === 'goals'
                       ? 'bg-emerald-700 text-white'
-                      : 'hover:bg-[#141414]/5 text-[#141414]'
+                      : 'hover:bg-[#261F1A]/5 text-[#6E6359]'
                   }`}
                 >
                   Professional Goals
@@ -1207,10 +1791,10 @@ export default function MentorshipTab() {
                 <button
                   type="button"
                   onClick={() => setFilterMode('all')}
-                  className={`px-2.5 py-1 text-[9px] font-mono uppercase tracking-wider font-bold transition-all cursor-pointer ${
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                     filterMode === 'all'
-                      ? 'bg-[#141414] text-[#E4E3E0]'
-                      : 'hover:bg-[#141414]/5 text-[#141414]'
+                      ? 'bg-[#261F1A] text-[#F6F2EB]'
+                      : 'hover:bg-[#261F1A]/5 text-[#6E6359]'
                   }`}
                 >
                   All Mentors
@@ -1219,12 +1803,12 @@ export default function MentorshipTab() {
             </div>
 
             {/* Quick Toggle Pills for Shared Experiences & Professional Goals */}
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div>
-                <span className="block text-[10px] uppercase tracking-wider font-bold text-amber-900 font-mono mb-1.5">
+                <span className="block text-[11px] uppercase tracking-[0.15em] font-semibold text-[#7D7166] mb-2">
                   Shared Experiences Filter (Click to toggle):
                 </span>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-2">
                   {SHARED_EXPERIENCE_OPTIONS.map(exp => {
                     const active = questionnaire.sharedExperiences.includes(exp.id);
                     return (
@@ -1232,13 +1816,13 @@ export default function MentorshipTab() {
                         key={exp.id}
                         type="button"
                         onClick={() => toggleSharedExperience(exp.id)}
-                        className={`px-2.5 py-1 text-[11px] border transition-all cursor-pointer flex items-center gap-1 ${
+                        className={`px-3.5 py-1.5 rounded-full text-xs border transition-all cursor-pointer flex items-center gap-1.5 ${
                           active
-                            ? 'bg-amber-500 text-[#141414] border-[#141414] font-bold'
-                            : 'bg-white text-[#141414]/75 border-[#141414]/20 hover:border-[#141414]'
+                            ? 'bg-[#984B27] text-[#F7F3EC] border-[#984B27] font-medium'
+                            : 'bg-transparent text-[#4A4037] border-[#D5CBC0] hover:border-[#984B27]'
                         }`}
                       >
-                        {active && <Check size={10} strokeWidth={3} />}
+                        {active && <Check size={12} strokeWidth={2.5} />}
                         {exp.label}
                       </button>
                     );
@@ -1247,10 +1831,10 @@ export default function MentorshipTab() {
               </div>
 
               <div>
-                <span className="block text-[10px] uppercase tracking-wider font-bold text-emerald-900 font-mono mb-1.5">
+                <span className="block text-[11px] uppercase tracking-[0.15em] font-semibold text-[#7D7166] mb-2">
                   Professional Goals Filter (Click to toggle):
                 </span>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-2">
                   {PROFESSIONAL_GOAL_OPTIONS.map(goal => {
                     const active = questionnaire.professionalGoals.includes(goal.id);
                     return (
@@ -1258,13 +1842,13 @@ export default function MentorshipTab() {
                         key={goal.id}
                         type="button"
                         onClick={() => toggleProfessionalGoal(goal.id)}
-                        className={`px-2.5 py-1 text-[11px] border transition-all cursor-pointer flex items-center gap-1 ${
+                        className={`px-3.5 py-1.5 rounded-full text-xs border transition-all cursor-pointer flex items-center gap-1.5 ${
                           active
-                            ? 'bg-emerald-700 text-white border-[#141414] font-bold'
-                            : 'bg-white text-[#141414]/75 border-[#141414]/20 hover:border-[#141414]'
+                            ? 'bg-[#261F1A] text-[#F7F3EC] border-[#261F1A] font-medium'
+                            : 'bg-transparent text-[#4A4037] border-[#D5CBC0] hover:border-[#261F1A]'
                         }`}
                       >
-                        {active && <Check size={10} strokeWidth={3} />}
+                        {active && <Check size={12} strokeWidth={2.5} />}
                         {goal.label}
                       </button>
                     );
@@ -1273,18 +1857,18 @@ export default function MentorshipTab() {
               </div>
             </div>
 
-            <div className="pt-2 border-t border-[#141414]/10 flex justify-between items-center">
+            <div className="pt-3 border-t border-[#E2D9CC] flex justify-between items-center">
               <button
                 type="button"
                 onClick={() => setShowTweakDNA(!showTweakDNA)}
-                className="text-[10px] uppercase font-mono tracking-wider font-bold text-[#141414] hover:underline flex items-center gap-1 cursor-pointer"
+                className="text-xs font-medium text-[#984B27] hover:underline flex items-center gap-1.5 cursor-pointer"
               >
-                <Edit size={12} /> {showTweakDNA ? 'Close Alignment Setup' : 'Calibrate Facility & Location Profile'}
+                <Edit size={13} /> {showTweakDNA ? 'Close Alignment Setup' : 'Calibrate Facility & Location Profile'}
               </button>
               {userProfile && (
-                <div className="text-[10px] font-mono text-[#141414]/60 uppercase">
+                <div className="text-xs text-[#74695E]">
                   Profile Status:{' '}
-                  <span className="font-bold text-emerald-700">
+                  <span className="font-semibold text-emerald-800">
                     {userProfile.bio && userProfile.history && userProfile.location ? 'Synchronized' : 'Incomplete'}
                   </span>
                 </div>
@@ -1300,14 +1884,14 @@ export default function MentorshipTab() {
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
                   transition={{ duration: 0.2 }}
-                  className="space-y-4 pt-3 border-t border-[#141414]/10 overflow-hidden"
+                  className="space-y-4 pt-3 border-t border-[#E2D9CC] overflow-hidden"
                 >
-                  <h4 className="text-[11px] font-bold uppercase tracking-wider text-[#141414] font-mono flex items-center gap-1.5">
-                    <Activity size={12} className="text-[#141414]" /> Alignment DNA Editor
+                  <h4 className="text-xs font-semibold text-[#261F1A] flex items-center gap-1.5">
+                    <Activity size={13} /> Alignment Profile Editor
                   </h4>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[9px] uppercase tracking-wider font-mono text-[#141414]/60 mb-1">
+                      <label className="block text-xs text-[#74695E] mb-1">
                         Incarceration History Facility
                       </label>
                       <input
@@ -1315,11 +1899,11 @@ export default function MentorshipTab() {
                         value={editHistory}
                         onChange={e => setEditHistory(e.target.value)}
                         placeholder="e.g., San Quentin or Rikers Island"
-                        className="w-full text-xs border border-[#141414]/20 focus:border-[#141414] p-2 bg-white outline-none font-bold"
+                        className="w-full text-xs border border-[#D5CBC0] rounded-xl p-2.5 bg-[#FAF7F2] outline-none"
                       />
                     </div>
                     <div>
-                      <label className="block text-[9px] uppercase tracking-wider font-mono text-[#141414]/60 mb-1">
+                      <label className="block text-xs text-[#74695E] mb-1">
                         Current Metro Location
                       </label>
                       <input
@@ -1327,13 +1911,13 @@ export default function MentorshipTab() {
                         value={editLocation}
                         onChange={e => setEditLocation(e.target.value)}
                         placeholder="e.g., Oakland, CA"
-                        className="w-full text-xs border border-[#141414]/20 focus:border-[#141414] p-2 bg-white outline-none font-bold"
+                        className="w-full text-xs border border-[#D5CBC0] rounded-xl p-2.5 bg-[#FAF7F2] outline-none"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-[9px] uppercase tracking-wider font-mono text-[#141414]/60 mb-1">
+                    <label className="block text-xs text-[#74695E] mb-1">
                       Professional Bio & Ambition
                     </label>
                     <textarea
@@ -1341,14 +1925,14 @@ export default function MentorshipTab() {
                       onChange={e => setEditBio(e.target.value)}
                       placeholder="e.g., Re-entry student focusing on backend engineering and resume support"
                       rows={2}
-                      className="w-full text-xs border border-[#141414]/20 focus:border-[#141414] p-2 bg-white outline-none resize-none font-medium"
+                      className="w-full text-xs border border-[#D5CBC0] rounded-xl p-2.5 bg-[#FAF7F2] outline-none resize-none"
                     />
                   </div>
 
                   <button
                     type="submit"
                     disabled={isUpdatingProfile}
-                    className="w-full bg-[#141414] text-[#E4E3E0] hover:bg-neutral-800 p-2 text-[10px] font-mono font-bold uppercase tracking-wider transition-colors disabled:opacity-50 cursor-pointer"
+                    className="w-full bg-[#261F1A] text-[#F6F2EB] rounded-xl py-2.5 text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer"
                   >
                     {isUpdatingProfile ? 'Saving Alignment Profile...' : 'Update & Sync Match Score'}
                   </button>
@@ -1359,12 +1943,12 @@ export default function MentorshipTab() {
 
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-xs uppercase tracking-widest font-bold flex items-center gap-2">
-                <Users size={16} /> Verified Mentor Directory ({mentors.length})
+              <h3 className="text-xs uppercase tracking-[0.16em] font-semibold text-[#7D7166] flex items-center gap-2">
+                <Users size={15} /> Verified Mentor Directory ({mentors.length})
               </h3>
-              <span className="text-[10px] font-mono uppercase tracking-wider opacity-60">
+              <span className="text-xs text-[#74695E]">
                 Sorted by:{' '}
-                <strong>
+                <strong className="text-[#261F1A]">
                   {filterMode === 'relevance'
                     ? 'Overall Compatibility'
                     : filterMode === 'experiences'
@@ -1396,7 +1980,7 @@ export default function MentorshipTab() {
 
               if (displayedMentors.length === 0) {
                 return (
-                  <div className="p-6 border border-[#141414]/20 text-center opacity-60 text-sm">
+                  <div className="p-6 rounded-2xl bg-[#F6F2EB] border border-[#DDD4C7] text-center text-sm text-[#74695E]">
                     No mentors available right now. Check back later.
                   </div>
                 );
@@ -1414,33 +1998,22 @@ export default function MentorshipTab() {
                 }) => {
                   const pending = pendingOutgoing.find(m => m.mentor_id === mentor.id);
                   const active = myMentors.find(m => m.mentor_id === mentor.id);
-                  const isHighMatch = score >= 80;
 
                   return (
                     <div
                       key={mentor.id}
-                      className={`bg-white border-2 p-6 transition-all duration-300 relative ${
-                        isHighMatch && filterMode !== 'all'
-                          ? 'border-[#141414] shadow-[4px_4px_0px_0px_rgba(20,20,20,1)]'
-                          : 'border-[#141414]/40 hover:border-[#141414]'
-                      }`}
+                      className="bg-[#F6F2EB] border border-[#DDD4C7] rounded-2xl p-6 transition-all duration-200 relative shadow-xs"
                     >
-                      {isHighMatch && filterMode !== 'all' && (
-                        <div className="absolute top-0 right-6 -translate-y-1/2 bg-[#141414] text-[#E4E3E0] border border-[#141414] px-2.5 py-0.5 text-[9px] uppercase tracking-wider font-mono font-bold flex items-center gap-1 rounded-sm shadow-sm select-none">
-                          <Sparkles size={10} className="text-amber-400" /> TOP QUESTIONNAIRE MATCH
-                        </div>
-                      )}
-
                       <div className="flex justify-between items-start mb-3 gap-4">
                         <div>
-                          <h4 className="text-xl font-serif italic font-bold">{mentor.name}</h4>
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs opacity-60 mt-1 font-mono">
+                          <h4 className="text-xl font-serif font-semibold text-[#261F1A]">{mentor.name}</h4>
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#74695E] mt-1">
                             {mentor.history && (
                               <span className="flex items-center gap-1">
                                 <Building size={12} /> {mentor.history}
                               </span>
                             )}
-                            {mentor.history && mentor.location && <span>•</span>}
+                            {mentor.history && mentor.location && <span>·</span>}
                             {mentor.location && (
                               <span className="flex items-center gap-1">
                                 <MapPin size={12} /> {mentor.location}
@@ -1449,77 +2022,59 @@ export default function MentorshipTab() {
                           </div>
                         </div>
 
-                        {/* Compatibility Score Display */}
+                        {/* Compatibility Score & Mini Visual Bars */}
                         <div className="flex flex-col items-end gap-1 text-right shrink-0">
-                          <div
-                            className={`text-[10px] px-2.5 py-0.5 uppercase tracking-widest font-mono font-bold border rounded-sm ${
-                              score >= 80
-                                ? 'bg-emerald-500/10 text-emerald-800 border-emerald-500/30'
-                                : score >= 60
-                                ? 'bg-amber-500/10 text-amber-800 border-amber-500/30'
-                                : 'bg-zinc-500/10 text-zinc-800 border-zinc-500/20'
-                            }`}
-                          >
+                          <div className="text-sm font-serif font-bold text-[#261F1A] tabular-nums">
                             {score}% Overall Match
                           </div>
-                          <div className="flex items-center gap-1.5 text-[9px] font-mono">
-                            <span className="text-amber-800 font-bold">Exp: {experienceScore}%</span>
-                            <span className="opacity-40">|</span>
-                            <span className="text-emerald-800 font-bold">Goals: {goalScore}%</span>
+                          <div className="flex items-center gap-2 text-[11px] font-mono text-[#74695E] tabular-nums">
+                            <span>Exp: {experienceScore}%</span>
+                            <span>·</span>
+                            <span>Goals: {goalScore}%</span>
                           </div>
                         </div>
                       </div>
 
-                      <p className="text-sm opacity-85 leading-relaxed mb-4">{mentor.bio}</p>
+                      <p className="text-sm text-[#4A4037] leading-relaxed mb-4">{mentor.bio}</p>
 
-                      {/* Matched Shared Experience & Professional Goal Badges */}
+                      {/* Clean Unboxed Metadata Line for Shared Experiences & Goals */}
                       {(sharedExperienceBadges.length > 0 || professionalGoalBadges.length > 0) && (
-                        <div className="flex flex-wrap gap-1.5 mb-4">
-                          {sharedExperienceBadges.map((badge, idx) => (
-                            <span
-                              key={`exp-${idx}`}
-                              className="inline-flex items-center gap-1 text-[10px] font-mono font-bold bg-amber-100/80 text-amber-950 border border-amber-300 px-2 py-0.5"
-                            >
-                              <HeartHandshake size={11} className="text-amber-700" /> {badge}
-                            </span>
-                          ))}
-                          {professionalGoalBadges.map((badge, idx) => (
-                            <span
-                              key={`goal-${idx}`}
-                              className="inline-flex items-center gap-1 text-[10px] font-mono font-bold bg-emerald-100/80 text-emerald-950 border border-emerald-300 px-2 py-0.5"
-                            >
-                              <Briefcase size={11} className="text-emerald-700" /> {badge}
-                            </span>
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-[#74695E] mb-4">
+                          <span className="font-semibold text-[#984B27]">Aligned on:</span>
+                          {[...sharedExperienceBadges, ...professionalGoalBadges].map((item, idx, arr) => (
+                            <React.Fragment key={`${item}-${idx}`}>
+                              <span className="text-[#261F1A] font-medium">{item}</span>
+                              {idx < arr.length - 1 && <span aria-hidden="true">·</span>}
+                            </React.Fragment>
                           ))}
                         </div>
                       )}
 
-                      <div className="pt-3 border-t border-[#141414]/10">
+                      <div className="pt-4 border-t border-[#E2D9CC]">
                         <div className="flex justify-between items-center flex-wrap gap-2">
                           <button
                             type="button"
                             onClick={() => toggleReasons(mentor.id)}
-                            className="text-[10px] uppercase font-mono tracking-wider font-bold text-[#141414]/70 hover:text-[#141414] flex items-center gap-1.5 cursor-pointer"
+                            className="text-xs font-medium text-[#74695E] hover:text-[#261F1A] flex items-center gap-1.5 cursor-pointer"
                           >
                             {expandedReasons[mentor.id]
                               ? 'Hide Questionnaire Alignment'
                               : `Why You Match (${reasons.length} reasons)`}
-                            <Sparkles size={11} className="text-amber-500" />
                           </button>
 
                           {active ? (
-                            <span className="text-[10px] uppercase tracking-widest bg-[#141414] text-[#E4E3E0] px-3 py-1 font-bold font-mono">
-                              Active Connection
+                            <span className="text-xs font-semibold text-emerald-800">
+                              ✓ Active Connection
                             </span>
                           ) : pending ? (
-                            <span className="text-[10px] uppercase tracking-widest border border-[#141414] px-3 py-1 opacity-60 font-mono">
+                            <span className="text-xs text-[#74695E]">
                               Pending Reply
                             </span>
                           ) : (
                             <button
                               type="button"
                               onClick={() => openRequestModal(mentor)}
-                              className="text-[10px] uppercase tracking-widest bg-[#141414] text-[#E4E3E0] px-3.5 py-1.5 hover:bg-neutral-800 transition-colors font-bold font-mono shadow-[2px_2px_0px_0px_rgba(20,20,20,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] cursor-pointer"
+                              className="px-4 py-2 rounded-xl bg-[#261F1A] text-[#F6F2EB] text-xs font-semibold hover:bg-[#3A3028] transition-colors cursor-pointer"
                             >
                               Request Mentor
                             </button>
@@ -1535,16 +2090,16 @@ export default function MentorshipTab() {
                               transition={{ duration: 0.2 }}
                               className="overflow-hidden mt-3"
                             >
-                              <div className="bg-[#141414]/5 p-3 rounded-sm space-y-1.5 border border-[#141414]/10">
-                                <h5 className="text-[9px] uppercase tracking-wider font-mono text-[#141414]/60 font-black mb-1">
-                                  QUESTIONNAIRE & PROFILE COMPATIBILITY BREAKDOWN:
-                                </h5>
+                              <div className="bg-[#EFE7DC]/70 p-3.5 rounded-xl space-y-1.5 border border-[#D8CFC2]">
+                                <div className="text-[10px] uppercase tracking-wider font-mono text-[#7D7166] font-bold mb-1">
+                                  Questionnaire Compatibility Breakdown
+                                </div>
                                 {reasons.map((reason, rIdx) => (
                                   <div
                                     key={rIdx}
-                                    className="text-xs flex items-center gap-2 text-[#141414]/85 leading-relaxed font-semibold"
+                                    className="text-xs flex items-center gap-2 text-[#261F1A]"
                                   >
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 shrink-0" />
+                                    <Check size={12} className="text-[#984B27] shrink-0" />
                                     <span>{reason}</span>
                                   </div>
                                 ))}
@@ -1570,25 +2125,27 @@ export default function MentorshipTab() {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-white w-full max-w-md border border-[#141414] shadow-2xl overflow-hidden"
+              className="bg-[#F6F2EB] w-full max-w-md border border-[#D8CFC2] rounded-2xl shadow-2xl overflow-hidden"
             >
-              <div className="bg-[#141414] text-[#E4E3E0] p-4 flex justify-between items-center">
-                <h3 className="font-serif italic text-xl">Request Mentorship</h3>
+              <div className="bg-[#261F1A] text-[#F7F3EC] p-5 flex justify-between items-center">
+                <h3 className="font-serif text-xl">Request Mentorship & Shared Roadmap</h3>
                 <button
+                  type="button"
                   onClick={() => setRequestModalOpen(false)}
-                  className="hover:opacity-70 transition-opacity"
+                  className="hover:opacity-70 transition-opacity cursor-pointer"
                 >
                   <X size={20} />
                 </button>
               </div>
 
-              <form onSubmit={requestMentorship} className="p-6 space-y-6">
+              <form onSubmit={requestMentorship} className="p-6 space-y-5">
                 <div>
-                  <p className="text-sm opacity-80 mb-4">
-                    You are requesting mentorship from <strong className="font-bold">{selectedMentor.name}</strong>.
+                  <p className="text-sm text-[#4A4037] mb-4">
+                    You are starting a mentorship connection with{' '}
+                    <strong className="font-semibold text-[#261F1A]">{selectedMentor.name}</strong>.
                   </p>
 
-                  <label className="block text-xs uppercase tracking-widest font-bold mb-2">
+                  <label className="block text-xs font-semibold text-[#261F1A] mb-2">
                     Personal Kite (Pre-filled from Questionnaire)
                   </label>
                   <textarea
@@ -1596,46 +2153,59 @@ export default function MentorshipTab() {
                     value={requestMessage}
                     onChange={e => setRequestMessage(e.target.value)}
                     placeholder="Introduce yourself and explain why you'd like them to be your mentor..."
-                    className="w-full border border-[#141414] p-3 min-h-[140px] focus:outline-none focus:ring-2 focus:ring-[#141414]/10 resize-y font-medium text-sm"
+                    className="w-full border border-[#D5CBC0] bg-[#FAF7F2] rounded-xl p-3 min-h-[130px] focus:outline-none text-sm"
                   />
-                  <p className="text-[10px] uppercase tracking-widest opacity-50 mt-1">
-                    This will be sent as a private kite to the mentor.
-                  </p>
 
-                  {/* Anonymity settings toggle */}
-                  <div className="mt-4 p-3 bg-neutral-50 border border-[#141414]/10 flex flex-col gap-1.5 rounded-sm">
+                  {/* Start Shared Milestone Track Immediately Toggle */}
+                  <div className="mt-4 p-3.5 bg-[#EFE7DC]/70 border border-[#D8CFC2] rounded-xl space-y-3">
                     <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={activateImmediately}
+                        onChange={e => setActivateImmediately(e.target.checked)}
+                        className="mt-0.5 w-4 h-4 rounded accent-[#984B27] cursor-pointer"
+                      />
+                      <div>
+                        <span className="block text-xs font-semibold text-[#261F1A]">
+                          Initialize 90-Day Shared Milestone Progress Tracker
+                        </span>
+                        <span className="block text-[11px] text-[#74695E] mt-0.5">
+                          Immediately create your shared 6-step milestone progress bar so both you and {selectedMentor.name} can track goals together.
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className="flex items-start gap-2.5 cursor-pointer select-none pt-2 border-t border-[#D8CFC2]">
                       <input
                         type="checkbox"
                         checked={isAnonymous}
                         onChange={e => setIsAnonymous(e.target.checked)}
-                        className="mt-0.5 w-4 h-4 text-[#141414] border-[#141414] rounded focus:ring-0 cursor-pointer accent-[#141414]"
+                        className="mt-0.5 w-4 h-4 rounded accent-[#261F1A] cursor-pointer"
                       />
                       <div>
-                        <span className="block text-xs uppercase tracking-wider font-bold text-[#141414]">
-                          Send Anonymously
+                        <span className="block text-xs font-semibold text-[#261F1A]">
+                          Connect Anonymously
                         </span>
-                        <span className="block text-[10px] text-neutral-500 leading-normal mt-0.5">
-                          Hide your profile name and location. The vetted mentor will read your query and reply to you as{' '}
-                          <strong className="text-neutral-700">"Anonymous Mentee"</strong>, maintaining maximum privacy.
+                        <span className="block text-[11px] text-[#74695E] mt-0.5">
+                          Hide your profile name and location. The mentor will see you as "Anonymous Mentee".
                         </span>
                       </div>
                     </label>
                   </div>
                 </div>
 
-                <div className="flex gap-4 pt-2">
+                <div className="flex gap-3 pt-2">
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="flex-1 bg-[#141414] text-[#E4E3E0] p-3 text-xs uppercase tracking-widest font-bold hover:opacity-90 transition-opacity disabled:opacity-50 select-none cursor-pointer"
+                    className="flex-1 bg-[#984B27] text-[#F7F3EC] py-3 px-4 rounded-xl text-xs font-semibold hover:bg-[#823E1E] transition-colors disabled:opacity-50 cursor-pointer"
                   >
-                    {isSubmitting ? 'Sending...' : 'Send Request'}
+                    {isSubmitting ? 'Starting...' : 'Send Kite & Start Roadmap'}
                   </button>
                   <button
                     type="button"
                     onClick={() => setRequestModalOpen(false)}
-                    className="flex-1 border border-[#141414] p-3 text-xs uppercase tracking-widest font-bold hover:bg-[#141414]/5 transition-colors select-none cursor-pointer"
+                    className="flex-1 border border-[#D5CBC0] py-3 px-4 rounded-xl text-xs font-semibold hover:bg-[#261F1A]/5 transition-colors cursor-pointer"
                   >
                     Cancel
                   </button>
@@ -1654,4 +2224,5 @@ export default function MentorshipTab() {
     </div>
   );
 }
+
 

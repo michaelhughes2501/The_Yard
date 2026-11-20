@@ -122,6 +122,16 @@ export interface Reply {
   timestamp: string;
 }
 
+export interface MentorshipMilestone {
+  id: string;
+  title: string;
+  category: 'reentry' | 'career' | 'legal' | 'wellness';
+  completed: boolean;
+  completed_by?: string;
+  completed_at?: string | null;
+  due_week?: number;
+}
+
 export interface Mentorship {
   id: string;
   mentor_id: string;
@@ -132,6 +142,7 @@ export interface Mentorship {
   created_at: string;
   updated_at: string;
   is_anonymous?: number | boolean;
+  milestones?: MentorshipMilestone[];
 }
 
 export interface AppDocument {
