@@ -158,6 +158,34 @@ service cloud.firestore {
         && (!data.keys().hasAny(['availability_status']) || (data.availability_status is string && data.availability_status.size() <= 50));
     }
 
+    function isValidStudioSettings(data) {
+      return data.keys().hasAll(['id', 'legal_name', 'public_handle', 'tagline', 'headquarters', 'founded'])
+        && data.keys().size() <= 12
+        && data.id is string && data.id.size() <= 128
+        && data.legal_name is string && data.legal_name.size() >= 1 && data.legal_name.size() <= 200
+        && data.public_handle is string && data.public_handle.size() >= 1 && data.public_handle.size() <= 100
+        && data.tagline is string && data.tagline.size() <= 160
+        && data.headquarters is string && data.headquarters.size() <= 150
+        && data.founded is string && data.founded.size() <= 20
+        && (!data.keys().hasAny(['studio_mark_text']) || (data.studio_mark_text is string && data.studio_mark_text.size() <= 10))
+        && (!data.keys().hasAny(['production_title']) || (data.production_title is string && data.production_title.size() <= 200))
+        && (!data.keys().hasAny(['production_status']) || (data.production_status is string && data.production_status.size() <= 150))
+        && (!data.keys().hasAny(['production_progress']) || (data.production_progress is number && data.production_progress >= 0 && data.production_progress <= 100))
+        && (!data.keys().hasAny(['updated_at']) || (data.updated_at is string && data.updated_at.size() <= 50));
+    }
+
+    function isValidKeepNote(data) {
+      return data.keys().hasAll(['id', 'user_id', 'title', 'body'])
+        && data.keys().size() <= 8
+        && data.id is string && data.id.size() <= 128
+        && data.user_id is string && data.user_id.size() <= 128
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && data.body is string && data.body.size() <= 10000
+        && (!data.keys().hasAny(['color']) || (data.color is string && data.color.size() <= 30))
+        && (!data.keys().hasAny(['pinned']) || data.pinned is bool)
+        && (!data.keys().hasAny(['created_at']) || (data.created_at is string && data.created_at.size() <= 50));
+    }
+
     // --- COLLECTION RULE GROUPS ---
 
     // USERS COLLECTION (Pillar 6: Split authentication / profile isolation)
@@ -261,6 +289,22 @@ service cloud.firestore {
       allow get, list: if isSignedIn();
       allow create: if isSignedIn() && isValidMentorshipSurvey(incoming()) && isOwner(incoming().user_id);
       allow update: if isSignedIn() && isValidMentorshipSurvey(incoming()) && isOwner(existing().user_id) && incoming().user_id == existing().user_id;
+      allow delete: if isSignedIn() && (isOwner(existing().user_id) || isAdmin());
+    }
+
+    // STUDIO SETTINGS (Halflight Pictures Console)
+    match /studio_settings/{settingId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidStudioSettings(incoming()) && isValidId(settingId);
+      allow delete: if isAdmin();
+    }
+
+    // KEEP NOTES
+    match /keep_notes/{noteId} {
+      allow get: if isSignedIn() && isOwner(existing().user_id);
+      allow list: if isSignedIn() && resource.data.user_id == request.auth.uid;
+      allow create: if isSignedIn() && isValidKeepNote(incoming()) && isOwner(incoming().user_id);
+      allow update: if isSignedIn() && isValidKeepNote(incoming()) && isOwner(existing().user_id) && incoming().user_id == existing().user_id;
       allow delete: if isSignedIn() && (isOwner(existing().user_id) || isAdmin());
     }
   }

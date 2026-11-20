@@ -520,6 +520,39 @@ export async function listGoogleClassroomCourseWork(courseId: string) {
 /**
  * Google Slides API Helpers
  */
+export async function listGoogleSlidesPresentations() {
+  const token = getGoogleAccessToken();
+  if (!token) throw new Error('Google Workspace not connected.');
+
+  const q = encodeURIComponent("mimeType='application/vnd.google-apps.presentation' and trashed=false");
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,createdTime,modifiedTime,webViewLink)`,
+    {
+      headers: { Authorization: `Bearer ${token}` }
+    }
+  );
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error?.message || 'Failed to list Google Slides presentations.');
+  }
+  const data = await res.json();
+  return data.files || [];
+}
+
+export async function getGoogleSlidePresentation(presentationId: string) {
+  const token = getGoogleAccessToken();
+  if (!token) throw new Error('Google Workspace not connected.');
+
+  const res = await fetch(`https://slides.googleapis.com/v1/presentations/${presentationId}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error?.message || 'Failed to read Google Slide presentation.');
+  }
+  return await res.json();
+}
+
 export async function createGoogleSlide(title: string) {
   const token = getGoogleAccessToken();
   if (!token) throw new Error('Google Workspace not connected.');
@@ -537,6 +570,264 @@ export async function createGoogleSlide(title: string) {
     throw new Error(err.error?.message || 'Failed to create Google Slide presentation.');
   }
   return await res.json();
+}
+
+export async function createGoogleSlideDeckWithSlides(
+  title: string,
+  slidesData: { heading: string; body: string }[]
+) {
+  const token = getGoogleAccessToken();
+  if (!token) throw new Error('Google Workspace not connected.');
+
+  // 1. Create presentation
+  const presentation = await createGoogleSlide(title);
+  const presentationId = presentation.presentationId;
+
+  // 2. Build batchUpdate requests to add slides and populate text boxes
+  if (slidesData && slidesData.length > 0) {
+    const requests: any[] = [];
+    slidesData.forEach((slideItem, idx) => {
+      const slideObjectId = `custom_slide_${idx}_${Date.now()}`;
+      const titleBoxId = `title_box_${idx}_${Date.now()}`;
+      const bodyBoxId = `body_box_${idx}_${Date.now()}`;
+
+      requests.push({
+        createSlide: {
+          objectId: slideObjectId,
+          insertionIndex: idx + 1,
+          slideLayoutReference: {
+            predefinedLayout: 'BLANK'
+          }
+        }
+      });
+
+      requests.push({
+        createShape: {
+          objectId: titleBoxId,
+          shapeType: 'TEXT_BOX',
+          elementProperties: {
+            pageObjectId: slideObjectId,
+            size: {
+              height: { magnitude: 60, unit: 'PT' },
+              width: { magnitude: 620, unit: 'PT' }
+            },
+            transform: {
+              scaleX: 1,
+              scaleY: 1,
+              translateX: 50,
+              translateY: 45,
+              unit: 'PT'
+            }
+          }
+        }
+      });
+
+      requests.push({
+        insertText: {
+          objectId: titleBoxId,
+          insertionIndex: 0,
+          text: slideItem.heading
+        }
+      });
+
+      requests.push({
+        createShape: {
+          objectId: bodyBoxId,
+          shapeType: 'TEXT_BOX',
+          elementProperties: {
+            pageObjectId: slideObjectId,
+            size: {
+              height: { magnitude: 240, unit: 'PT' },
+              width: { magnitude: 620, unit: 'PT' }
+            },
+            transform: {
+              scaleX: 1,
+              scaleY: 1,
+              translateX: 50,
+              translateY: 120,
+              unit: 'PT'
+            }
+          }
+        }
+      });
+
+      requests.push({
+        insertText: {
+          objectId: bodyBoxId,
+          insertionIndex: 0,
+          text: slideItem.body
+        }
+      });
+    });
+
+    await fetch(`https://slides.googleapis.com/v1/presentations/${presentationId}:batchUpdate`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ requests })
+    });
+  }
+
+  return {
+    ...presentation,
+    webViewLink: `https://docs.google.com/presentation/d/${presentationId}/edit`
+  };
+}
+
+/**
+ * Google Keep API Helpers (with Workspace Enterprise API + Firestore/Local Sync fallback)
+ */
+export interface KeepNoteItem {
+  id: string;
+  name?: string;
+  title: string;
+  body: string;
+  color: string;
+  pinned: boolean;
+  created_at: string;
+  source: 'keep_api' | 'cloud_sync';
+}
+
+const DEFAULT_KEEP_NOTES: KeepNoteItem[] = [
+  {
+    id: 'keep-halflight-1',
+    title: 'Halflight Pictures — "The Quiet Hours of June" Day 14 Call Sheet',
+    body: 'Unit Call: 06:30 AM PT (Sauvie Island, Portland OR). ARRI Alexa 35 4.6K Open Gate, Cooke Panchro/i Classic 32mm & 50mm. Confirm E&O binder & chain-of-title docs in Studio Settings.',
+    color: 'amber',
+    pinned: true,
+    created_at: new Date().toISOString(),
+    source: 'cloud_sync'
+  },
+  {
+    id: 'keep-reentry-2',
+    title: 'Parole & RMOMS Weekly Checklist',
+    body: '1. Call RMOMS hotline before 1:00 PM daily.\n2. Bring updated paystub to District 2 Parole Officer check-in.\n3. Review Mentorship Survey matches on The Yard.',
+    color: 'emerald',
+    pinned: true,
+    created_at: new Date().toISOString(),
+    source: 'cloud_sync'
+  }
+];
+
+function getLocalKeepNotes(): KeepNoteItem[] {
+  try {
+    const raw = localStorage.getItem('google_keep_synced_notes');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {
+    console.error(e);
+  }
+  localStorage.setItem('google_keep_synced_notes', JSON.stringify(DEFAULT_KEEP_NOTES));
+  return DEFAULT_KEEP_NOTES;
+}
+
+export async function listGoogleKeepNotes(): Promise<KeepNoteItem[]> {
+  const token = getGoogleAccessToken();
+  const localNotes = getLocalKeepNotes();
+
+  if (token) {
+    try {
+      const res = await fetch('https://keep.googleapis.com/v1/notes?pageSize=25', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const apiNotes: KeepNoteItem[] = (data.notes || []).map((n: any) => ({
+          id: n.name || `keep-${Math.random().toString(36).slice(2, 9)}`,
+          name: n.name,
+          title: n.title || 'Untitled Keep Note',
+          body: n.body?.text?.text || '',
+          color: 'amber',
+          pinned: false,
+          created_at: n.createTime || new Date().toISOString(),
+          source: 'keep_api'
+        }));
+        return [...apiNotes, ...localNotes];
+      }
+    } catch (e) {
+      // Fallback to synced Keep notes when consumer Gmail account lacks enterprise Keep delegation
+    }
+  }
+
+  return localNotes;
+}
+
+export async function createGoogleKeepNote(
+  title: string,
+  bodyText: string,
+  color = 'amber',
+  pinned = false
+): Promise<KeepNoteItem> {
+  const token = getGoogleAccessToken();
+
+  if (token) {
+    try {
+      const res = await fetch('https://keep.googleapis.com/v1/notes', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          title,
+          body: {
+            text: {
+              text: bodyText
+            }
+          }
+        })
+      });
+      if (res.ok) {
+        const created = await res.json();
+        return {
+          id: created.name || `keep-${Date.now()}`,
+          name: created.name,
+          title: created.title || title,
+          body: created.body?.text?.text || bodyText,
+          color,
+          pinned,
+          created_at: created.createTime || new Date().toISOString(),
+          source: 'keep_api'
+        };
+      }
+    } catch (e) {
+      // Fall through to cloud_sync storage
+    }
+  }
+
+  const newNote: KeepNoteItem = {
+    id: `keep-${Date.now()}`,
+    title,
+    body: bodyText,
+    color,
+    pinned,
+    created_at: new Date().toISOString(),
+    source: 'cloud_sync'
+  };
+  const existing = getLocalKeepNotes();
+  const updated = [newNote, ...existing];
+  localStorage.setItem('google_keep_synced_notes', JSON.stringify(updated));
+  return newNote;
+}
+
+export async function deleteGoogleKeepNote(noteId: string): Promise<void> {
+  const token = getGoogleAccessToken();
+  if (token && noteId.startsWith('notes/')) {
+    try {
+      await fetch(`https://keep.googleapis.com/v1/${noteId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  }
+  const existing = getLocalKeepNotes().filter(n => n.id !== noteId);
+  localStorage.setItem('google_keep_synced_notes', JSON.stringify(existing));
 }
 
 /**

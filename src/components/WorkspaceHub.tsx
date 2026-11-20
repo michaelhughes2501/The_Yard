@@ -20,7 +20,9 @@ import {
   Link,
   CloudLightning,
   AlertCircle,
-  Calendar
+  Calendar,
+  StickyNote,
+  Presentation
 } from 'lucide-react';
 import { 
   isGoogleConnected, 
@@ -42,14 +44,21 @@ import {
   createGoogleTask,
   listGoogleClassroomCourses,
   listGoogleClassroomCourseWork,
+  listGoogleSlidesPresentations,
+  getGoogleSlidePresentation,
   createGoogleSlide,
+  createGoogleSlideDeckWithSlides,
+  listGoogleKeepNotes,
+  createGoogleKeepNote,
+  deleteGoogleKeepNote,
+  KeepNoteItem,
   createGoogleForm
 } from '../services/googleWorkspace.ts';
 import ConfirmationDialog from './ConfirmationDialog';
 
 export default function WorkspaceHub() {
   const { token } = useAuth();
-  const [activeSubTab, setActiveSubTab] = useState<'drive' | 'gmail' | 'chat' | 'meet' | 'contacts' | 'sheets' | 'tasks' | 'classroom' | 'slides' | 'forms' | 'picker'>('drive');
+  const [activeSubTab, setActiveSubTab] = useState<'drive' | 'gmail' | 'chat' | 'meet' | 'contacts' | 'sheets' | 'tasks' | 'classroom' | 'slides' | 'keep' | 'forms' | 'picker'>('slides');
   const [isConnected, setIsConnected] = useState(isGoogleConnected());
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -64,9 +73,17 @@ export default function WorkspaceHub() {
   const [chatSpaces, setChatSpaces] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
   
-  // New States
+  // Google Slides & Keep States
   const [sheetsTitle, setSheetsTitle] = useState('');
   const [slidesTitle, setSlidesTitle] = useState('');
+  const [slidesTemplate, setSlidesTemplate] = useState<'halflight' | 'reentry' | 'blank'>('halflight');
+  const [slidesList, setSlidesList] = useState<any[]>([]);
+  const [selectedPresentationDetails, setSelectedPresentationDetails] = useState<any>(null);
+  const [keepNotes, setKeepNotes] = useState<KeepNoteItem[]>([]);
+  const [keepTitle, setKeepTitle] = useState('');
+  const [keepBody, setKeepBody] = useState('');
+  const [keepColor, setKeepColor] = useState('amber');
+  const [noteToDelete, setNoteToDelete] = useState<KeepNoteItem | null>(null);
   const [formsTitle, setFormsTitle] = useState('');
   const [pickedFile, setPickedFile] = useState<any>(null);
 
@@ -266,6 +283,12 @@ export default function WorkspaceHub() {
         if (courses.length > 0 && !selectedCourse) {
           setSelectedCourse(courses[0].id);
         }
+      } else if (activeSubTab === 'slides') {
+        const pres = await listGoogleSlidesPresentations();
+        setSlidesList(pres);
+      } else if (activeSubTab === 'keep') {
+        const notes = await listGoogleKeepNotes();
+        setKeepNotes(notes);
       }
     } catch (err: any) {
       console.error(`Error refreshing workspace ${activeSubTab} data:`, err);
@@ -522,10 +545,26 @@ export default function WorkspaceHub() {
         /* Connected Workspace Management Area */
         <div className="space-y-6" id="workspace-active-panel">
           {/* Bento Sub tabs */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-[repeat(11,minmax(0,1fr))] border border-[#141414] bg-white text-xs font-bold uppercase tracking-widest">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-12 border border-[#141414] bg-white text-xs font-bold uppercase tracking-widest">
+            <button
+              onClick={() => setActiveSubTab('slides')}
+              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b xl:border-b-0 border-[#141414] transition-colors cursor-pointer ${
+                activeSubTab === 'slides' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-gray-100'
+              }`}
+            >
+              <Presentation size={16} /> Slides
+            </button>
+            <button
+              onClick={() => setActiveSubTab('keep')}
+              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b xl:border-b-0 border-[#141414] transition-colors cursor-pointer ${
+                activeSubTab === 'keep' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-gray-100'
+              }`}
+            >
+              <StickyNote size={16} /> Keep
+            </button>
             <button
               onClick={() => setActiveSubTab('drive')}
-              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b lg:border-b-0 border-[#141414] transition-colors ${
+              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b xl:border-b-0 border-[#141414] transition-colors cursor-pointer ${
                 activeSubTab === 'drive' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-gray-100'
               }`}
             >
@@ -533,7 +572,7 @@ export default function WorkspaceHub() {
             </button>
             <button
               onClick={() => setActiveSubTab('gmail')}
-              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b lg:border-b-0 border-[#141414] transition-colors ${
+              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b xl:border-b-0 border-[#141414] transition-colors cursor-pointer ${
                 activeSubTab === 'gmail' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-gray-100'
               }`}
             >
@@ -541,7 +580,7 @@ export default function WorkspaceHub() {
             </button>
             <button
               onClick={() => setActiveSubTab('chat')}
-              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b lg:border-b-0 border-[#141414] transition-colors ${
+              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b xl:border-b-0 border-[#141414] transition-colors cursor-pointer ${
                 activeSubTab === 'chat' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-gray-100'
               }`}
             >
@@ -549,7 +588,7 @@ export default function WorkspaceHub() {
             </button>
             <button
               onClick={() => setActiveSubTab('meet')}
-              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b lg:border-b-0 border-[#141414] transition-colors ${
+              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b xl:border-b-0 border-[#141414] transition-colors cursor-pointer ${
                 activeSubTab === 'meet' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-gray-100'
               }`}
             >
@@ -557,7 +596,7 @@ export default function WorkspaceHub() {
             </button>
             <button
               onClick={() => setActiveSubTab('contacts')}
-              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b lg:border-b-0 border-[#141414] transition-colors ${
+              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b xl:border-b-0 border-[#141414] transition-colors cursor-pointer ${
                 activeSubTab === 'contacts' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-gray-100'
               }`}
             >
@@ -565,7 +604,7 @@ export default function WorkspaceHub() {
             </button>
             <button
               onClick={() => setActiveSubTab('sheets')}
-              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b lg:border-b-0 border-[#141414] transition-colors ${
+              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b xl:border-b-0 border-[#141414] transition-colors cursor-pointer ${
                 activeSubTab === 'sheets' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-gray-100'
               }`}
             >
@@ -573,7 +612,7 @@ export default function WorkspaceHub() {
             </button>
             <button
               onClick={() => setActiveSubTab('tasks')}
-              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b sm:border-b-0 lg:border-b-0 border-[#141414] transition-colors ${
+              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b sm:border-b-0 xl:border-b-0 border-[#141414] transition-colors cursor-pointer ${
                 activeSubTab === 'tasks' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-gray-100'
               }`}
             >
@@ -581,23 +620,15 @@ export default function WorkspaceHub() {
             </button>
             <button
               onClick={() => setActiveSubTab('classroom')}
-              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b sm:border-b-0 lg:border-b-0 border-[#141414] transition-colors ${
+              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b sm:border-b-0 xl:border-b-0 border-[#141414] transition-colors cursor-pointer ${
                 activeSubTab === 'classroom' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-gray-100'
               }`}
             >
               <Briefcase size={16} /> Classes
             </button>
             <button
-              onClick={() => setActiveSubTab('slides')}
-              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b sm:border-b-0 lg:border-b-0 border-[#141414] transition-colors ${
-                activeSubTab === 'slides' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-gray-100'
-              }`}
-            >
-              <Plus size={16} /> Slides
-            </button>
-            <button
               onClick={() => setActiveSubTab('forms')}
-              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b sm:border-b-0 lg:border-b-0 border-[#141414] transition-colors ${
+              className={`p-4 flex flex-col items-center justify-center gap-2 border-r border-b sm:border-b-0 xl:border-b-0 border-[#141414] transition-colors cursor-pointer ${
                 activeSubTab === 'forms' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-gray-100'
               }`}
             >
@@ -605,7 +636,7 @@ export default function WorkspaceHub() {
             </button>
             <button
               onClick={() => setActiveSubTab('picker')}
-              className={`p-4 flex flex-col items-center justify-center gap-2 border-b sm:border-b-0 lg:border-b-0 border-[#141414] transition-colors ${
+              className={`p-4 flex flex-col items-center justify-center gap-2 border-b sm:border-b-0 xl:border-b-0 border-[#141414] transition-colors cursor-pointer ${
                 activeSubTab === 'picker' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-gray-100'
               }`}
             >
@@ -867,7 +898,7 @@ export default function WorkspaceHub() {
                     <button
                       onClick={() => {
                         if (!emailTo || !emailSubject || !emailBody) {
-                          alert('All fields are required to draft and send emails.');
+                          setErrorMsg('All fields are required to draft and send emails.');
                           return;
                         }
                         setConfirmSendEmail(true);
@@ -1177,46 +1208,361 @@ export default function WorkspaceHub() {
               </div>
             )}
 
-            {/* GOOGLE SLIDES CREATOR */}
+            {/* GOOGLE SLIDES STUDIO & DECK BUILDER */}
             {activeSubTab === 'slides' && (
-              <div className="max-w-xl space-y-6" id="subtab-slides">
-                <div>
-                  <h3 className="text-xl font-serif italic">Google Slides Creator</h3>
-                  <p className="text-xs opacity-60">Create a new presentation.</p>
-                </div>
-
-                <div className="space-y-4">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8" id="subtab-slides">
+                <div className="lg:col-span-5 space-y-6 border-b lg:border-b-0 lg:border-r border-[#141414]/15 pb-6 lg:pb-0 lg:pr-6">
                   <div>
-                    <label className="block text-xs uppercase font-bold tracking-widest mb-1 text-gray-700">Slide Title</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Project Pitch"
-                      value={slidesTitle}
-                      onChange={e => setSlidesTitle(e.target.value)}
-                      className="w-full border border-[#141414] p-3 text-xs focus:outline-none focus:ring-1 focus:ring-[#141414]/10 bg-white"
-                    />
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-amber-800 font-bold block">
+                      Google Slides API v1 // Presentation Builder
+                    </span>
+                    <h3 className="text-2xl font-serif italic font-bold">Google Slides Deck Generator</h3>
+                    <p className="text-xs opacity-60 mt-1">
+                      Generate multi-slide presentations directly in your Google Account with structured slide layouts.
+                    </p>
                   </div>
 
-                  <button
-                    onClick={async () => {
-                      if (!slidesTitle) return;
-                      setLoading(true);
-                      setErrorMsg('');
-                      try {
-                        const res = await createGoogleSlide(slidesTitle);
-                        setSuccessMsg('Successfully created Google Slide: ' + res.presentationId);
-                        setSlidesTitle('');
-                      } catch (err: any) {
-                        setErrorMsg(err.message);
-                      } finally {
-                        setLoading(false);
-                      }
-                    }}
-                    disabled={loading || !slidesTitle}
-                    className="bg-[#141414] text-white p-3 px-6 uppercase text-xs font-bold tracking-widest flex items-center gap-2 hover:opacity-90 cursor-pointer disabled:opacity-50"
-                  >
-                    <Plus size={14} /> Create Presentation
-                  </button>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs uppercase font-bold tracking-widest mb-1 text-gray-700">
+                        Presentation Title
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Halflight Pictures — Distributor Deck 2026"
+                        value={slidesTitle}
+                        onChange={e => setSlidesTitle(e.target.value)}
+                        className="w-full border border-[#141414] p-3 text-xs focus:outline-none bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs uppercase font-bold tracking-widest mb-1 text-gray-700">
+                        Deck Template Preset
+                      </label>
+                      <select
+                        value={slidesTemplate}
+                        onChange={e => setSlidesTemplate(e.target.value as any)}
+                        className="w-full border border-[#141414] p-3 text-xs font-bold bg-white focus:outline-none"
+                      >
+                        <option value="halflight">
+                          Halflight Pictures — "The Quiet Hours of June" Distributor Deck (3 Slides)
+                        </option>
+                        <option value="reentry">
+                          Re-Entry Career, Housing & Parole Portfolio Deck (3 Slides)
+                        </option>
+                        <option value="blank">Blank Single-Slide Presentation</option>
+                      </select>
+                    </div>
+
+                    <button
+                      onClick={async () => {
+                        const finalTitle =
+                          slidesTitle.trim() ||
+                          (slidesTemplate === 'halflight'
+                            ? 'Halflight Pictures — The Quiet Hours of June Deck'
+                            : 'Re-Entry Milestone & Career Portfolio');
+                        setLoading(true);
+                        setErrorMsg('');
+                        try {
+                          let slidesPayload: { heading: string; body: string }[] = [];
+                          if (slidesTemplate === 'halflight') {
+                            slidesPayload = [
+                              {
+                                heading: 'Halflight Pictures, LLC — Studio Identity',
+                                body: 'Small crews. Long takes. Stories that stay with you.\nHeadquarters: Portland, Oregon — PT (UTC-8)\nFounded: 2017 | Public Slate: halflight.film/studio'
+                              },
+                              {
+                                heading: 'In Production: "The Quiet Hours of June"',
+                                body: 'Principal Photography: Day 14 of 26 (54% Complete)\nFormat: 2.39:1 Anamorphic | 24fps | ARRI LogC4\nFestival & Distributor Screening Package'
+                              }
+                            ];
+                          } else if (slidesTemplate === 'reentry') {
+                            slidesPayload = [
+                              {
+                                heading: 'Re-Entry Roadmap & Vocational Credentials',
+                                body: 'Verified milestones, OSHA/CDL certifications, and community mentorship record from The Yard.'
+                              },
+                              {
+                                heading: 'Supervision Compliance & Support Network',
+                                body: '100% RMOMS check-in compliance, stable transitional housing, and active peer mentorship.'
+                              }
+                            ];
+                          }
+
+                          const res =
+                            slidesPayload.length > 0
+                              ? await createGoogleSlideDeckWithSlides(finalTitle, slidesPayload)
+                              : await createGoogleSlide(finalTitle);
+
+                          setSuccessMsg(
+                            `Created Google Slides presentation "${finalTitle}" (ID: ${res.presentationId})`
+                          );
+                          setSlidesTitle('');
+                          const updatedList = await listGoogleSlidesPresentations();
+                          setSlidesList(updatedList);
+                        } catch (err: any) {
+                          setErrorMsg(err.message);
+                        } finally {
+                          setLoading(false);
+                        }
+                      }}
+                      disabled={loading}
+                      className="w-full bg-[#141414] text-white p-3.5 px-6 uppercase text-xs font-bold tracking-widest flex items-center justify-center gap-2 hover:opacity-90 cursor-pointer disabled:opacity-50"
+                    >
+                      <Presentation size={15} /> Create Google Slides Deck
+                    </button>
+                  </div>
+                </div>
+
+                {/* Right 7 Cols: Existing Google Slides Presentations */}
+                <div className="lg:col-span-7 space-y-4">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h4 className="text-xl font-serif italic font-bold">Your Google Slides Presentations</h4>
+                      <p className="text-xs opacity-60">
+                        Click "Inspect Deck" to fetch live slide structure from the Slides API or open directly in Google Slides.
+                      </p>
+                    </div>
+                  </div>
+
+                  {selectedPresentationDetails && (
+                    <div className="bg-amber-50 border border-[#141414] p-4 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-mono uppercase tracking-widest font-bold text-amber-900">
+                          Live Presentation Inspector // {selectedPresentationDetails.slides?.length || 0} Slides
+                        </span>
+                        <button
+                          onClick={() => setSelectedPresentationDetails(null)}
+                          className="text-xs font-bold cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <p className="font-serif italic font-bold text-base">
+                        {selectedPresentationDetails.title}
+                      </p>
+                      <p className="text-[11px] font-mono opacity-70">
+                        Presentation ID: {selectedPresentationDetails.presentationId}
+                      </p>
+                    </div>
+                  )}
+
+                  {loading ? (
+                    <div className="text-center py-12 font-serif italic opacity-60">
+                      Loading presentations from Google Slides...
+                    </div>
+                  ) : slidesList.length === 0 ? (
+                    <div className="p-8 border border-dashed border-[#141414]/30 text-center text-xs opacity-60">
+                      No Google Slides presentations found yet. Use the generator on the left to create your first deck!
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {slidesList.map(pres => (
+                        <div
+                          key={pres.id}
+                          className="border border-[#141414] bg-white p-4 flex flex-col justify-between space-y-4"
+                        >
+                          <div>
+                            <span className="text-[9px] font-mono uppercase tracking-widest bg-amber-100 border border-amber-300 px-2 py-0.5 font-bold">
+                              Google Slides
+                            </span>
+                            <h5 className="font-bold text-sm mt-2 truncate" title={pres.name}>
+                              {pres.name}
+                            </h5>
+                            <p className="text-[10px] font-mono opacity-50 mt-1">
+                              Updated: {new Date(pres.modifiedTime || pres.createdTime).toLocaleDateString()}
+                            </p>
+                          </div>
+
+                          <div className="pt-3 border-t border-[#141414]/10 flex justify-between items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const details = await getGoogleSlidePresentation(pres.id);
+                                  setSelectedPresentationDetails(details);
+                                } catch (e: any) {
+                                  setErrorMsg(e.message);
+                                }
+                              }}
+                              className="text-[10px] font-mono uppercase tracking-widest underline font-bold cursor-pointer"
+                            >
+                              Inspect Deck
+                            </button>
+                            <a
+                              href={
+                                pres.webViewLink ||
+                                `https://docs.google.com/presentation/d/${pres.id}/edit`
+                              }
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="bg-[#141414] text-white px-3 py-1.5 text-[10px] font-mono uppercase tracking-widest font-bold flex items-center gap-1"
+                            >
+                              Open Slides <ExternalLink size={10} />
+                            </a>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* GOOGLE KEEP NOTES HUB */}
+            {activeSubTab === 'keep' && (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8" id="subtab-keep">
+                <div className="lg:col-span-5 space-y-5 border-b lg:border-b-0 lg:border-r border-[#141414]/15 pb-6 lg:pb-0 lg:pr-6">
+                  <div>
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-amber-800 font-bold block">
+                      Google Keep Integration // Quick Capture & Production Memos
+                    </span>
+                    <h3 className="text-2xl font-serif italic font-bold">Create Google Keep Note</h3>
+                    <p className="text-xs opacity-60 mt-1">
+                      Capture parole check-in reminders, call-sheet memos, or re-entry checklists synced with Google Keep.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-[10px] font-mono uppercase font-bold tracking-widest mb-1">
+                        Note Title
+                      </label>
+                      <input
+                        type="text"
+                        value={keepTitle}
+                        onChange={e => setKeepTitle(e.target.value)}
+                        placeholder="e.g. RMOMS Morning Check-In & Studio Call Sheet"
+                        className="w-full border border-[#141414] p-3 text-xs focus:outline-none bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-mono uppercase font-bold tracking-widest mb-1">
+                        Note Content / Checklist
+                      </label>
+                      <textarea
+                        rows={4}
+                        value={keepBody}
+                        onChange={e => setKeepBody(e.target.value)}
+                        placeholder="Write your note or checklist items..."
+                        className="w-full border border-[#141414] p-3 text-xs focus:outline-none bg-white resize-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-mono uppercase font-bold tracking-widest mb-1">
+                        Note Card Accent
+                      </label>
+                      <div className="flex gap-2">
+                        {['amber', 'emerald', 'sky', 'rose'].map(c => (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => setKeepColor(c)}
+                            className={`px-3 py-1.5 text-[10px] font-mono uppercase font-bold border ${
+                              keepColor === c
+                                ? 'border-[#141414] bg-[#141414] text-[#E4E3E0]'
+                                : 'border-[#141414]/30 bg-white text-[#141414]'
+                            } cursor-pointer`}
+                          >
+                            {c}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!keepTitle.trim() && !keepBody.trim()) return;
+                        setLoading(true);
+                        setErrorMsg('');
+                        try {
+                          await createGoogleKeepNote(
+                            keepTitle.trim() || 'Quick Keep Note',
+                            keepBody.trim(),
+                            keepColor,
+                            true
+                          );
+                          const updated = await listGoogleKeepNotes();
+                          setKeepNotes(updated);
+                          setKeepTitle('');
+                          setKeepBody('');
+                          setSuccessMsg('Note saved to Google Keep!');
+                          setTimeout(() => setSuccessMsg(''), 4000);
+                        } catch (err: any) {
+                          setErrorMsg(err.message);
+                        } finally {
+                          setLoading(false);
+                        }
+                      }}
+                      disabled={loading || (!keepTitle.trim() && !keepBody.trim())}
+                      className="w-full bg-[#141414] text-white p-3.5 uppercase text-xs font-bold tracking-widest flex items-center justify-center gap-2 hover:opacity-90 cursor-pointer disabled:opacity-50"
+                    >
+                      <StickyNote size={15} /> Save to Google Keep
+                    </button>
+                  </div>
+                </div>
+
+                <div className="lg:col-span-7 space-y-4">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h4 className="text-xl font-serif italic font-bold">Your Google Keep Notes</h4>
+                      <p className="text-xs opacity-60">
+                        Pinned checklists, studio production notes, and supervision memos.
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-mono uppercase tracking-widest bg-amber-100 border border-amber-300 px-2.5 py-1 font-bold">
+                      {keepNotes.length} Notes
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {keepNotes.map(note => {
+                      const bgMap: Record<string, string> = {
+                        amber: 'bg-amber-50 border-amber-400',
+                        emerald: 'bg-emerald-50 border-emerald-400',
+                        sky: 'bg-sky-50 border-sky-400',
+                        rose: 'bg-rose-50 border-rose-400'
+                      };
+                      const cardStyle = bgMap[note.color] || 'bg-amber-50 border-amber-400';
+
+                      return (
+                        <div
+                          key={note.id}
+                          className={`border-2 border-[#141414] ${cardStyle} p-5 flex flex-col justify-between space-y-4 shadow-sm`}
+                        >
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-start gap-2">
+                              <span className="text-[9px] font-mono uppercase tracking-widest font-black px-2 py-0.5 bg-[#141414] text-[#E4E3E0]">
+                                {note.source === 'keep_api' ? 'Google Keep API' : 'Keep Synced'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setNoteToDelete(note)}
+                                className="text-red-700 hover:bg-red-100 p-1 rounded cursor-pointer"
+                                title="Delete Keep Note"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                            <h5 className="font-serif italic font-bold text-lg text-[#141414]">
+                              {note.title}
+                            </h5>
+                            <p className="text-xs text-neutral-800 whitespace-pre-wrap leading-relaxed">
+                              {note.body}
+                            </p>
+                          </div>
+                          <div className="pt-2 border-t border-[#141414]/10 flex justify-between items-center text-[10px] font-mono opacity-60">
+                            <span>{new Date(note.created_at).toLocaleDateString()}</span>
+                            <span>📌 Pinned</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             )}
@@ -1359,6 +1705,25 @@ export default function WorkspaceHub() {
         confirmText="Verify Back-up"
         cancelText="Cancel"
         type="info"
+      />
+
+      <ConfirmationDialog
+        isOpen={noteToDelete !== null}
+        title="Delete Google Keep Note"
+        message={`Are you sure you want to delete the Keep note "${noteToDelete?.title}"?`}
+        onConfirm={async () => {
+          const target = noteToDelete;
+          setNoteToDelete(null);
+          if (target) {
+            await deleteGoogleKeepNote(target.id);
+            const updated = await listGoogleKeepNotes();
+            setKeepNotes(updated);
+          }
+        }}
+        onCancel={() => setNoteToDelete(null)}
+        confirmText="Delete Note"
+        cancelText="Cancel"
+        type="danger"
       />
     </div>
   );

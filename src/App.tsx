@@ -20,7 +20,8 @@ import {
   TrendingUp,
   Calendar,
   Sun,
-  Moon
+  Moon,
+  Clapperboard
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
@@ -52,8 +53,9 @@ import QuickActions from './components/QuickActions';
 import MentalHealthSupport from './components/MentalHealthSupport';
 import EventCalendar from './components/EventCalendar';
 import ProgressTracker from './components/ProgressTracker';
+import StudioConsole from './components/StudioConsole';
 
-type Tab = 'yard' | 'kites' | 'resources' | 'tools' | 'forum' | 'mentorship' | 'vault' | 'profile' | 'opportunities' | 'admin' | 'help' | 'cases' | 'workspace' | 'mental-health' | 'calendar' | 'progress';
+type Tab = 'yard' | 'kites' | 'resources' | 'tools' | 'forum' | 'mentorship' | 'vault' | 'profile' | 'opportunities' | 'admin' | 'help' | 'cases' | 'workspace' | 'mental-health' | 'calendar' | 'progress' | 'studio';
 
 function MainApp() {
   const { user, token, logout, isLoading } = useAuth();
@@ -138,24 +140,26 @@ function MainApp() {
 
   const tabs = [
     { id: 'yard', name: 'The Yard', icon: Users },
-    { id: 'progress', name: 'Progress Tracker', icon: TrendingUp },
-    { id: 'calendar', name: 'Calendar', icon: Calendar },
-    { id: 'opportunities', name: 'Opportunities', icon: Briefcase },
-    { id: 'forum', name: 'Forum', icon: MessageSquare },
     { id: 'kites', name: 'Kites', icon: Send },
-    { id: 'mentorship', name: 'Mentorship', icon: ShieldCheck },
-    { id: 'vault', name: 'The Vault', icon: Archive },
     { id: 'resources', name: 'Resources', icon: ShieldCheck },
+    { id: 'studio', name: 'Studio Settings', icon: Clapperboard },
+    { id: 'workspace', name: 'Workspace', icon: Globe },
+    { id: 'mentorship', name: 'Mentorship', icon: ShieldCheck },
+    { id: 'forum', name: 'Forum', icon: MessageSquare },
+    { id: 'opportunities', name: 'Opportunities', icon: Briefcase },
     { id: 'mental-health', name: 'Wellness', icon: HeartPulse },
     { id: 'tools', name: 'Legal Tools', icon: Scale },
     { id: 'cases', name: 'Case Tracker', icon: Scale },
-    { id: 'workspace', name: 'Workspace', icon: Globe },
+    { id: 'progress', name: 'Progress Tracker', icon: TrendingUp },
+    { id: 'calendar', name: 'Calendar', icon: Calendar },
+    { id: 'vault', name: 'The Vault', icon: Archive },
     { id: 'help', name: 'Help Center', icon: HelpCircle },
   ];
 
   const renderContent = () => {
     switch (activeTab) {
       case 'yard': return <TheYard />;
+      case 'studio': return <StudioConsole />;
       case 'opportunities': return <Opportunities initialTab={opportunitiesSubTab} />;
       case 'forum': return (
         <Forum 

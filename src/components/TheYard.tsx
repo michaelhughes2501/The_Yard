@@ -110,8 +110,29 @@ export default function TheYard() {
   const [users, setUsers] = useState<User[]>([]);
   const [search, setSearch] = useState('');
   const [connectedIds, setConnectedIds] = useState<string[]>([]);
-  const [filterMode, setFilterMode] = useState<'all' | 'connections' | 'meet'>('all');
+  const [filterMode, setFilterMode] = useState<'all' | 'connections' | 'meet' | 'matches'>('all');
   const { token, user } = useAuth();
+
+  // Mentorship Profile Survey & Matchmaking states
+  const [mySurvey, setMySurvey] = useState<MentorshipSurvey | null>(null);
+  const [surveyMatches, setSurveyMatches] = useState<MentorshipMatch[]>([]);
+  const [showSurveyModal, setShowSurveyModal] = useState(false);
+  const [matchRoleFilter, setMatchRoleFilter] = useState<'all' | 'mentor' | 'mentee'>('all');
+  const [requestedMentorIds, setRequestedMentorIds] = useState<string[]>([]);
+
+  // In-app Private Messaging ("Kite" / "Message") Modal & Slang Mode states
+  const [kiteModalTarget, setKiteModalTarget] = useState<{ id: string; name: string } | null>(null);
+  const [kiteContent, setKiteContent] = useState('');
+  const [isSendingKite, setIsSendingKite] = useState(false);
+  const [useSlang, setUseSlang] = useState<boolean>(() => {
+    const saved = localStorage.getItem('yard_slang_mode');
+    return saved !== null ? saved === 'true' : true;
+  });
+
+  const toggleSlangMode = (val: boolean) => {
+    setUseSlang(val);
+    localStorage.setItem('yard_slang_mode', String(val));
+  };
 
   // Recommended for You additional state
   const [userMilestones, setUserMilestones] = useState<any[]>([]);
@@ -128,6 +149,31 @@ export default function TheYard() {
     interests: '',
     looking_to_meet: false
   });
+
+  const fetchMentorshipSurveyAndMatches = () => {
+    if (!token) return;
+    fetch('/api/mentorship/survey', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.survey) {
+          setMySurvey(data.survey);
+        }
+      })
+      .catch(console.error);
+
+    fetch('/api/mentorship/matches', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setSurveyMatches(data);
+        }
+      })
+      .catch(console.error);
+  };
 
   const fetchUsers = () => {
     fetch('/api/users', {
@@ -180,7 +226,9 @@ export default function TheYard() {
         setIsEditingPresence(false);
         fetchCurrentUserProfile();
         fetchUsers();
-        alert('Your Yard presence has been updated successfully!');
+        setCelebrationMessage('Your Yard presence has been updated!');
+        setShowCelebration(true);
+        setTimeout(() => setShowCelebration(false), 3500);
         
         logActivity(
           'system',
@@ -189,12 +237,9 @@ export default function TheYard() {
             ? `Broadcasted yard presence update: "${presenceForm.public_status}"`
             : `Updated your Yard interests to: "${presenceForm.interests}"`
         );
-      } else {
-        alert('Failed to update your Yard presence.');
       }
     } catch (err) {
       console.error('Error saving Yard presence:', err);
-      alert('An error occurred while saving your presence.');
     }
   };
 
@@ -371,13 +416,9 @@ export default function TheYard() {
           'Enriched with Feedback',
           `Posted words of support and transition encouragement to ${targetStory ? targetStory.author_name : 'a peer'}'s milestone.`
         );
-      } else {
-        const errData = await res.json();
-        alert(errData.error || 'Failed to post comment.');
       }
     } catch (err) {
       console.error('Error posting comment:', err);
-      alert('An error occurred while posting comment.');
     } finally {
       setIsSubmittingComment(prev => ({ ...prev, [testimonialId]: false }));
     }
@@ -462,6 +503,9 @@ export default function TheYard() {
     // Fetch current user details
     fetchCurrentUserProfile();
 
+    // Fetch mentorship survey and matches
+    fetchMentorshipSurveyAndMatches();
+
     // Fetch user's connection list
     fetch('/api/connections', {
       headers: { Authorization: `Bearer ${token}` }
@@ -502,7 +546,6 @@ export default function TheYard() {
   const handleSubmitStory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!storyForm.content.trim()) {
-      alert("Please write your success story details.");
       return;
     }
     setIsSubmittingStory(true);
@@ -519,23 +562,19 @@ export default function TheYard() {
         setStoryForm({ author_name: user?.username || '', role: '', content: '' });
         setShowStoryModal(false);
         fetchTestimonials();
-        // Reset slider to the newest story
         setStoryIndex(0);
-        alert('Thank you for sharing your story of hope! It has been posted to the Home Feed.');
+        setCelebrationMessage('Thank you for sharing your story of hope! It has been posted to the Home Feed.');
+        setShowCelebration(true);
+        setTimeout(() => setShowCelebration(false), 3500);
         
-        // Log milestone story shared
         logActivity(
           'story',
           'Shared Milestone Story',
           `Published a community success lighthouse story under your alias.`
         );
-      } else {
-        const errData = await res.json();
-        alert(errData.error || 'Failed to submit success story.');
       }
     } catch (err) {
       console.error(err);
-      alert('An error occurred during submission.');
     } finally {
       setIsSubmittingStory(false);
     }
@@ -554,45 +593,90 @@ export default function TheYard() {
         const data = await res.json();
         setTestimonials(prev => prev.map(t => t.id === id ? { ...t, likes_count: data.likes_count } : t));
         
-        // Log celebration clicked
         const targetStory = testimonials.find(t => t.id === id);
         logActivity(
           'like',
           'Celebrated Re-entry Milestone',
           `Lending positive peer strength to ${targetStory ? targetStory.author_name : 'a member'}'s journey.`
         );
-      } else {
-        const errData = await res.json();
-        alert(errData.error || 'Failed to celebrate this story.');
       }
     } catch (err) {
       console.error('Error celebrating testimonial:', err);
     }
   };
 
-  const handleSendKite = async (receiverId: string, name: string) => {
-    const content = prompt(`Send a kite to ${name}:`);
-    if (!content) return;
-    
+  const handleSendKite = (receiverId: string, name: string) => {
+    setKiteModalTarget({ id: receiverId, name });
+    setKiteContent('');
+  };
+
+  const executeSendKiteModal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!kiteModalTarget || !kiteContent.trim()) return;
+    setIsSendingKite(true);
     try {
-      await fetch('/api/kites', {
+      const res = await fetch('/api/kites', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ receiverId, content })
+        body: JSON.stringify({ receiverId: kiteModalTarget.id, content: kiteContent.trim() })
       });
-      alert('Kite sent successfully! Check your Kites tab to view the conversation.');
-      
-      // Log encrypted peer messaging
-      logActivity(
-        'kite',
-        'Launched private Kite',
-        `Dispatched a kite to ${name}.`
-      );
+      if (res.ok) {
+        logActivity(
+          'kite',
+          useSlang ? 'Launched private Kite' : 'Sent Private Message',
+          `Dispatched a ${useSlang ? 'kite' : 'message'} to ${kiteModalTarget.name}.`
+        );
+        setCelebrationMessage(`${useSlang ? 'Kite' : 'Private message'} sent to ${kiteModalTarget.name}! Open the Kites tab to continue the conversation.`);
+        setShowCelebration(true);
+        setTimeout(() => setShowCelebration(false), 4000);
+        setKiteModalTarget(null);
+        setKiteContent('');
+      }
     } catch (err) {
-      alert('Failed to send kite.');
+      console.error(err);
+    } finally {
+      setIsSendingKite(false);
+    }
+  };
+
+  const handleRequestMentorshipFromYard = async (targetUser: User, role: 'mentor' | 'mentee' | 'peer') => {
+    try {
+      const defaultMsg = role === 'mentor'
+        ? `Hey ${targetUser.name}, we matched on The Yard based on shared life goals and interests! Would you be open to mentoring me?`
+        : `Hey ${targetUser.name}, I saw our profile survey match in The Yard and would love to support your re-entry goals as a mentor/peer.`;
+
+      const res = await fetch('/api/mentorships/request', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          mentorId: targetUser.id,
+          message: defaultMsg,
+          isAnonymous: false
+        })
+      });
+
+      if (res.ok) {
+        setRequestedMentorIds(prev => [...prev, targetUser.id]);
+        setCelebrationMessage(`Mentorship connection & intro kite sent to ${targetUser.name}!`);
+        setShowCelebration(true);
+        setTimeout(() => setShowCelebration(false), 3500);
+        logActivity(
+          'connection',
+          'Mentorship Match Requested',
+          `Initiated a survey-matched mentorship link with ${targetUser.name}.`
+        );
+      } else {
+        // Even if already requested, send a kite
+        handleSendKite(targetUser.id, targetUser.name);
+      }
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -630,20 +714,19 @@ export default function TheYard() {
             `Linked direct secure connection pairing in The Yard with ${name}.`
           );
         }
-      } else {
-        const errData = await res.json();
-        alert(errData.error || 'Failed to update connection.');
       }
     } catch (err) {
       console.error('Error toggling connection:', err);
-      alert('An error occurred while updating the connection.');
     }
   };
+
+  const matchedUserIds = surveyMatches.map(m => m.user.id);
 
   const finalFilteredUsers = users
     .filter(u => {
       if (filterMode === 'connections') return connectedIds.includes(u.id);
       if (filterMode === 'meet') return u.looking_to_meet === true;
+      if (filterMode === 'matches') return matchedUserIds.includes(u.id);
       return true;
     })
     .map(u => ({
@@ -1407,6 +1490,243 @@ export default function TheYard() {
         </div>
       </div>
 
+      {/* Mentor & Mentee Profile Survey & Matchmaking Hub */}
+      <div className="bg-white border-2 border-[#141414] p-8 space-y-6 shadow-sm" id="yard-mentorship-survey-hub">
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-[#141414]/15 pb-6">
+          <div className="space-y-1.5">
+            <span className="text-[10px] uppercase font-mono tracking-widest text-amber-800 font-black flex items-center gap-1.5">
+              <HeartHandshake size={14} className="text-amber-600" /> Profile Survey Matchmaking // Common Interests & Shared Life Goals
+            </span>
+            <h3 className="text-3xl font-serif italic font-bold text-[#141414]">
+              Find Your Mentor or Mentee in The Yard
+            </h3>
+            <p className="text-xs text-neutral-600 max-w-2xl leading-relaxed">
+              Complete our 4-step re-entry profile survey to match with mentors, mentees, and peers based on shared life goals, common interests, re-entry stage, and preferred check-in cadence.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
+            {mySurvey && (
+              <span className="px-3 py-1.5 bg-emerald-50 border border-emerald-300 text-emerald-900 font-mono text-[10px] font-bold uppercase tracking-widest">
+                ✓ Survey Active ({mySurvey.role_preference.toUpperCase()})
+              </span>
+            )}
+            <button
+              onClick={() => setShowSurveyModal(true)}
+              className="px-6 py-3 bg-[#141414] text-[#E4E3E0] text-xs font-mono uppercase tracking-widest font-bold hover:bg-amber-900 transition-colors flex items-center gap-2 cursor-pointer"
+              id="open-mentorship-survey-btn"
+            >
+              <Target size={15} />
+              {mySurvey ? 'Update Profile Survey' : 'Take Profile Survey'}
+            </button>
+          </div>
+        </div>
+
+        {/* User's Current Survey Snapshot */}
+        {mySurvey ? (
+          <div className="bg-amber-50/60 border border-amber-300/80 p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[10px] font-mono uppercase tracking-widest font-black text-amber-950 bg-amber-200/70 px-2 py-0.5">
+                  Your Role: {mySurvey.role_preference}
+                </span>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-600">
+                  Cadence: <strong>{mySurvey.cadence}</strong> • Style: <strong>{mySurvey.communication_style}</strong>
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {mySurvey.life_goals.map((g, i) => (
+                  <span key={i} className="text-[10px] font-mono bg-[#141414] text-[#E4E3E0] px-2 py-0.5 font-bold">
+                    🎯 {g}
+                  </span>
+                ))}
+                {mySurvey.interests.map((int, i) => (
+                  <span key={i} className="text-[10px] font-mono bg-white border border-[#141414]/20 text-[#141414] px-2 py-0.5 font-bold">
+                    #{int}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <button
+              onClick={() => setShowSurveyModal(true)}
+              className="text-[10px] font-mono uppercase tracking-widest underline font-bold text-[#141414] hover:text-amber-800 shrink-0 cursor-pointer"
+            >
+              Edit Preferences
+            </button>
+          </div>
+        ) : (
+          <div className="bg-neutral-50 border border-dashed border-[#141414]/30 p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <h4 className="font-serif italic font-bold text-lg text-[#141414]">Personalize Your Match Score</h4>
+              <p className="text-xs text-neutral-600">
+                Below are active mentors and mentees in The Yard. Take the 60-second survey to rank matches by your exact life goals and interests!
+              </p>
+            </div>
+            <button
+              onClick={() => setShowSurveyModal(true)}
+              className="px-4 py-2 border border-[#141414] bg-white hover:bg-[#141414] hover:text-[#E4E3E0] text-[10px] font-mono uppercase tracking-widest font-bold transition-colors shrink-0 cursor-pointer"
+            >
+              Start Survey →
+            </button>
+          </div>
+        )}
+
+        {/* Filter Bar for Mentorship Matches */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div className="flex border border-[#141414] bg-white text-[10px] font-mono uppercase tracking-widest font-bold">
+            <button
+              onClick={() => setMatchRoleFilter('all')}
+              className={`px-4 py-2 border-r border-[#141414] transition-colors cursor-pointer ${
+                matchRoleFilter === 'all' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-neutral-100'
+              }`}
+            >
+              All Matches ({surveyMatches.length})
+            </button>
+            <button
+              onClick={() => setMatchRoleFilter('mentor')}
+              className={`px-4 py-2 border-r border-[#141414] transition-colors cursor-pointer ${
+                matchRoleFilter === 'mentor' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-neutral-100'
+              }`}
+            >
+              Mentors ({surveyMatches.filter(m => m.survey?.role_preference === 'mentor' || m.survey?.role_preference === 'both').length})
+            </button>
+            <button
+              onClick={() => setMatchRoleFilter('mentee')}
+              className={`px-4 py-2 transition-colors cursor-pointer ${
+                matchRoleFilter === 'mentee' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-neutral-100'
+              }`}
+            >
+              Mentees ({surveyMatches.filter(m => m.survey?.role_preference === 'mentee' || m.survey?.role_preference === 'both').length})
+            </button>
+          </div>
+
+          <span className="text-[10px] font-mono uppercase tracking-widest opacity-60">
+            Sorted by Shared Life Goals & Common Interests
+          </span>
+        </div>
+
+        {/* Matched Mentors & Mentees Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {surveyMatches
+            .filter(m => {
+              if (matchRoleFilter === 'mentor') return m.survey?.role_preference === 'mentor' || m.survey?.role_preference === 'both';
+              if (matchRoleFilter === 'mentee') return m.survey?.role_preference === 'mentee' || m.survey?.role_preference === 'both';
+              return true;
+            })
+            .slice(0, 6)
+            .map((match) => {
+              const isRequested = requestedMentorIds.includes(match.user.id);
+              const rolePref = match.survey?.role_preference || 'both';
+              const roleBadge =
+                rolePref === 'mentor'
+                  ? 'Mentor'
+                  : rolePref === 'mentee'
+                  ? 'Seeking Mentor'
+                  : 'Mentor & Peer';
+
+              return (
+                <div
+                  key={match.user.id}
+                  className="border border-[#141414] bg-[#F9F9F8] p-5 flex flex-col justify-between space-y-4 hover:shadow-md transition-all"
+                >
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-start gap-2">
+                      <div>
+                        <span className="inline-block text-[9px] font-mono uppercase tracking-widest px-2 py-0.5 bg-[#141414] text-[#E4E3E0] font-bold mb-1">
+                          {roleBadge}
+                        </span>
+                        <h4 className="text-xl font-serif italic font-bold text-[#141414]">{match.user.name}</h4>
+                        <p className="text-[10px] font-mono uppercase tracking-wider opacity-60">
+                          {match.user.location || 'Community Member'} • {match.survey?.cadence || 'flexible'}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-100 border border-amber-400 text-amber-950 font-mono text-xs font-black">
+                          {match.matchScore}% Match
+                        </span>
+                      </div>
+                    </div>
+
+                    {match.survey?.personal_statement && (
+                      <p className="text-xs italic font-serif text-neutral-700 bg-white p-3 border-l-2 border-[#141414]">
+                        "{match.survey.personal_statement}"
+                      </p>
+                    )}
+
+                    {/* Shared Life Goals */}
+                    <div className="space-y-1">
+                      <span className="text-[9px] font-mono uppercase tracking-widest font-bold text-neutral-500 block">
+                        {match.sharedLifeGoals.length > 0 ? `Shared Life Goals (${match.sharedLifeGoals.length})` : 'Life Goals'}
+                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        {(match.sharedLifeGoals.length > 0 ? match.sharedLifeGoals : (match.survey?.life_goals || []).slice(0, 3)).map((goal, idx) => (
+                          <span
+                            key={idx}
+                            className={`text-[9px] font-mono px-2 py-0.5 font-bold ${
+                              match.sharedLifeGoals.includes(goal)
+                                ? 'bg-emerald-100 border border-emerald-400 text-emerald-950'
+                                : 'bg-white border border-neutral-300 text-neutral-700'
+                            }`}
+                          >
+                            🎯 {goal}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Common Interests */}
+                    <div className="space-y-1">
+                      <span className="text-[9px] font-mono uppercase tracking-widest font-bold text-neutral-500 block">
+                        {match.sharedInterests.length > 0 ? `Common Interests (${match.sharedInterests.length})` : 'Interests'}
+                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        {(match.sharedInterests.length > 0 ? match.sharedInterests : (match.survey?.interests || []).slice(0, 4)).map((interest, idx) => (
+                          <span
+                            key={idx}
+                            className={`text-[9px] font-mono px-2 py-0.5 font-bold ${
+                              match.sharedInterests.includes(interest)
+                                ? 'bg-amber-100 border border-amber-400 text-amber-950'
+                                : 'bg-white border border-neutral-200 text-neutral-600'
+                            }`}
+                          >
+                            #{interest}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-[#141414]/10 flex gap-2">
+                    <button
+                      onClick={() =>
+                        handleRequestMentorshipFromYard(
+                          match.user,
+                          rolePref === 'mentee' ? 'mentee' : 'mentor'
+                        )
+                      }
+                      disabled={isRequested}
+                      className="flex-1 bg-[#141414] text-[#E4E3E0] py-2.5 px-3 text-[10px] font-mono uppercase tracking-widest font-bold hover:opacity-90 disabled:opacity-50 transition-opacity cursor-pointer"
+                    >
+                      {isRequested
+                        ? '✓ Match Connected'
+                        : rolePref === 'mentee'
+                        ? 'Offer Mentorship'
+                        : 'Request Mentor'}
+                    </button>
+                    <button
+                      onClick={() => handleSendKite(match.user.id, match.user.name)}
+                      className="px-3 py-2.5 border border-[#141414] bg-white hover:bg-neutral-100 text-[#141414] text-[10px] font-mono uppercase tracking-widest font-bold transition-colors cursor-pointer"
+                      title={useSlang ? 'Send a Kite (Private Message)' : 'Send a Private Message'}
+                    >
+                      {useSlang ? 'Send Kite' : 'Message'}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+      </div>
+
       <div className="space-y-6">
         <div className="relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 opacity-40" />
@@ -1419,38 +1739,76 @@ export default function TheYard() {
           />
         </div>
 
-        {/* Elegant Connections Filter Switch */}
-        <div className="flex border border-[#141414] bg-white text-xs font-bold uppercase tracking-widest max-w-lg">
-          <button
-            onClick={() => setFilterMode('all')}
-            className={`flex-1 py-4 text-center border-r border-[#141414] transition-colors cursor-pointer ${
-              filterMode === 'all'
-                ? 'bg-[#141414] text-[#E4E3E0]'
-                : 'hover:bg-gray-100 text-[#141414]'
-            }`}
-          >
-            All Members
-          </button>
-          <button
-            onClick={() => setFilterMode('connections')}
-            className={`flex-1 py-4 text-center border-r border-[#141414] transition-colors cursor-pointer ${
-              filterMode === 'connections'
-                ? 'bg-[#141414] text-[#E4E3E0]'
-                : 'hover:bg-gray-100 text-[#141414]'
-            }`}
-          >
-            Connected ({connectedIds.length})
-          </button>
-          <button
-            onClick={() => setFilterMode('meet')}
-            className={`flex-1 py-4 text-center transition-colors cursor-pointer ${
-              filterMode === 'meet'
-                ? 'bg-[#141414] text-[#E4E3E0]'
-                : 'hover:bg-gray-100 text-[#141414]'
-            }`}
-          >
-            On The Yard
-          </button>
+        {/* Connections Filter Switch + Slang Terminology Toggle */}
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+          <div className="flex flex-wrap border border-[#141414] bg-white text-xs font-bold uppercase tracking-widest w-full lg:w-auto">
+            <button
+              onClick={() => setFilterMode('all')}
+              className={`px-5 py-4 text-center border-r border-[#141414] transition-colors cursor-pointer ${
+                filterMode === 'all'
+                  ? 'bg-[#141414] text-[#E4E3E0]'
+                  : 'hover:bg-gray-100 text-[#141414]'
+              }`}
+            >
+              All Members
+            </button>
+            <button
+              onClick={() => setFilterMode('connections')}
+              className={`px-5 py-4 text-center border-r border-[#141414] transition-colors cursor-pointer ${
+                filterMode === 'connections'
+                  ? 'bg-[#141414] text-[#E4E3E0]'
+                  : 'hover:bg-gray-100 text-[#141414]'
+              }`}
+            >
+              Connected ({connectedIds.length})
+            </button>
+            <button
+              onClick={() => setFilterMode('meet')}
+              className={`px-5 py-4 text-center border-r border-[#141414] transition-colors cursor-pointer ${
+                filterMode === 'meet'
+                  ? 'bg-[#141414] text-[#E4E3E0]'
+                  : 'hover:bg-gray-100 text-[#141414]'
+              }`}
+            >
+              {useSlang ? 'On The Yard' : 'Ready to Meet'}
+            </button>
+            <button
+              onClick={() => setFilterMode('matches')}
+              className={`px-5 py-4 text-center transition-colors cursor-pointer ${
+                filterMode === 'matches'
+                  ? 'bg-[#141414] text-[#E4E3E0]'
+                  : 'hover:bg-gray-100 text-[#141414]'
+              }`}
+            >
+              Survey Matches ({surveyMatches.length})
+            </button>
+          </div>
+
+          {/* Slang Mode Toggle with Interactive Glossary Tooltips */}
+          <div className="flex flex-wrap items-center gap-3 bg-white border border-[#141414] px-4 py-2.5 text-xs">
+            <span className="text-[10px] font-mono uppercase tracking-widest opacity-60 font-bold">
+              Terminology:
+            </span>
+            <button
+              type="button"
+              onClick={() => toggleSlangMode(!useSlang)}
+              className="px-2.5 py-1 bg-[#141414] text-[#E4E3E0] font-mono text-[10px] uppercase tracking-widest font-bold cursor-pointer"
+            >
+              {useSlang ? 'Yard Slang Mode: ON' : 'Standard Mode: ON'}
+            </button>
+            <span
+              className="text-[10px] font-mono underline decoration-dotted cursor-help text-amber-900 font-bold"
+              title='"Kite" is community slang for a private message or letter sent to a peer.'
+            >
+              Kite = Message
+            </span>
+            <span
+              className="text-[10px] font-mono underline decoration-dotted cursor-help text-amber-900 font-bold"
+              title='"The Yard" is community slang for a shared meeting place or common area to socialize.'
+            >
+              Yard = Meeting Place
+            </span>
+          </div>
         </div>
       </div>
 
@@ -1567,8 +1925,9 @@ export default function TheYard() {
                 <button 
                   onClick={() => handleSendKite(user.id, user.name)}
                   className="text-xs uppercase tracking-widest font-bold hover:underline cursor-pointer"
+                  title={useSlang ? '"Kite" means a private message' : 'Send a private message'}
                 >
-                  Send Kite
+                  {useSlang ? 'Send Kite' : 'Send Message'}
                 </button>
                 <span className="text-xs uppercase tracking-widest opacity-40 select-none">|</span>
                 <span className="text-xs uppercase tracking-widest font-bold font-mono">
@@ -1579,6 +1938,130 @@ export default function TheYard() {
           );
         })}
       </div>
+
+      {/* Mentorship Profile Survey Modal */}
+      <MentorshipSurveyModal
+        isOpen={showSurveyModal}
+        onClose={() => setShowSurveyModal(false)}
+        initialSurvey={mySurvey}
+        onSaved={(savedSurvey) => {
+          setMySurvey(savedSurvey);
+          fetchMentorshipSurveyAndMatches();
+          setCelebrationMessage('Your Mentorship Profile Survey has been saved! Matches updated.');
+          setShowCelebration(true);
+          setTimeout(() => setShowCelebration(false), 4000);
+        }}
+      />
+
+      {/* In-App Compose Kite / Private Message Modal */}
+      <AnimatePresence>
+        {kiteModalTarget && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-[#E4E3E0] text-[#141414] border-2 border-[#141414] w-full max-w-lg p-8 shadow-2xl relative space-y-5"
+            >
+              <button
+                onClick={() => setKiteModalTarget(null)}
+                className="absolute top-4 right-4 p-2 hover:bg-[#141414]/10 transition-colors cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between pr-8">
+                  <span className="text-[10px] font-mono uppercase tracking-widest font-bold opacity-60">
+                    {useSlang ? 'Secure Kite Dispatch // Private Message' : 'Secure Private Message'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => toggleSlangMode(!useSlang)}
+                    className="text-[10px] font-mono uppercase tracking-widest underline font-bold text-amber-900 cursor-pointer"
+                  >
+                    {useSlang ? 'Switch to Standard Terms' : 'Switch to Yard Slang'}
+                  </button>
+                </div>
+                <h3 className="text-3xl font-serif italic font-bold">
+                  {useSlang ? `Send a Kite to ${kiteModalTarget.name}` : `Message ${kiteModalTarget.name}`}
+                </h3>
+                <p className="text-xs opacity-70 leading-relaxed">
+                  {useSlang ? (
+                    <>
+                      Drop a private <strong className="underline decoration-dotted cursor-help" title='"Kite" = Private Message'>kite</strong> to connect or invite {kiteModalTarget.name} to link up on the <strong className="underline decoration-dotted cursor-help" title='"Yard" = Meeting Place'>yard</strong>.
+                    </>
+                  ) : (
+                    <>
+                      Send a private message to connect or invite {kiteModalTarget.name} to a meeting place.
+                    </>
+                  )}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setKiteContent(
+                      useSlang
+                        ? `Hey ${kiteModalTarget.name}, dropping you a kite! Let's link up on the yard soon.`
+                        : `Hey ${kiteModalTarget.name}, sending you a message! Let's connect at a meeting place soon.`
+                    )
+                  }
+                  className="text-[10px] font-mono uppercase tracking-widest px-3 py-1.5 bg-white border border-[#141414]/30 hover:border-[#141414] cursor-pointer"
+                >
+                  + {useSlang ? 'Suggest Yard Meetup' : 'Suggest Meeting Place'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setKiteContent(
+                      useSlang
+                        ? `Hey ${kiteModalTarget.name}, saw our shared goals in The Yard. Wanted to send a kite and connect!`
+                        : `Hey ${kiteModalTarget.name}, saw our shared goals in the directory. Wanted to send a message and connect!`
+                    )
+                  }
+                  className="text-[10px] font-mono uppercase tracking-widest px-3 py-1.5 bg-white border border-[#141414]/30 hover:border-[#141414] cursor-pointer"
+                >
+                  + {useSlang ? 'Mentorship Kite' : 'Mentorship Intro'}
+                </button>
+              </div>
+
+              <form onSubmit={executeSendKiteModal} className="space-y-4">
+                <textarea
+                  required
+                  rows={4}
+                  value={kiteContent}
+                  onChange={e => setKiteContent(e.target.value)}
+                  placeholder={
+                    useSlang
+                      ? `Write your kite (message) to ${kiteModalTarget.name}...`
+                      : `Write your private message to ${kiteModalTarget.name}...`
+                  }
+                  className="w-full bg-white border border-[#141414] p-4 text-sm focus:outline-none resize-none"
+                />
+                <div className="flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setKiteModalTarget(null)}
+                    className="px-5 py-2.5 border border-[#141414] text-xs font-mono uppercase tracking-widest font-bold hover:bg-white cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSendingKite || !kiteContent.trim()}
+                    className="px-6 py-2.5 bg-[#141414] text-[#E4E3E0] text-xs font-mono uppercase tracking-widest font-bold hover:opacity-90 disabled:opacity-40 cursor-pointer"
+                  >
+                    {isSendingKite ? 'Sending...' : useSlang ? 'Send Kite' : 'Send Message'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Share Your Success Story Modal */}
       <AnimatePresence>

@@ -144,6 +144,41 @@
         "availability_status": { "type": "string" }
       },
       "required": ["id", "user_id", "role_preference"]
+    },
+    "StudioSettings": {
+      "title": "StudioSettings",
+      "description": "Halflight Pictures Studio Console settings and production configuration",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "studio_mark": { "type": "string" },
+        "legal_name": { "type": "string" },
+        "public_handle": { "type": "string" },
+        "tagline": { "type": "string" },
+        "headquarters": { "type": "string" },
+        "founded": { "type": "string" },
+        "production_title": { "type": "string" },
+        "production_day": { "type": "number" },
+        "production_total_days": { "type": "number" },
+        "updated_at": { "type": "string" }
+      },
+      "required": ["id", "user_id", "legal_name", "public_handle"]
+    },
+    "KeepNote": {
+      "title": "KeepNote",
+      "description": "Synced Google Keep note and checklist item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "color": { "type": "string" },
+        "is_pinned": { "type": "boolean" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "user_id", "title", "content"]
     }
   },
   "firestore": {
@@ -154,6 +189,14 @@
     "mentorship_surveys/{surveyId}": {
       "schema": "MentorshipSurvey",
       "description": "Profile surveys for mentor and mentee matching"
+    },
+    "studio_settings/{settingId}": {
+      "schema": "StudioSettings",
+      "description": "Halflight Pictures Studio Console configuration"
+    },
+    "keep_notes/{noteId}": {
+      "schema": "KeepNote",
+      "description": "Google Keep notes and checklists"
     },
     "threads/{threadId}": {
       "schema": "Thread",
