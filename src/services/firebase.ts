@@ -1,16 +1,26 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { getAuth, type Auth } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfigFromFile from '../../firebase-applet-config.json';
-// The Firebase web API key is read from the environment instead of the committed JSON.
-const firebaseConfig = { ...firebaseConfigFromFile, apiKey: (import.meta as ImportMeta & { env: Record<string, string | undefined> }).env.VITE_FIREBASE_API_KEY };
+
+const envApiKey = (import.meta as ImportMeta & { env: Record<string, string | undefined> }).env?.VITE_FIREBASE_API_KEY;
+const resolvedApiKey = (envApiKey && envApiKey.trim()) || (firebaseConfigFromFile as { apiKey?: string }).apiKey || '';
+const firebaseConfig = { ...firebaseConfigFromFile, apiKey: resolvedApiKey };
 
 // Initialize Firebase App
 const app = initializeApp(firebaseConfig);
 
 // Export Authentication and Firestore references
 export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId); /* CRITICAL: The app will break without this line */
-export const auth = getAuth(app);
+
+let authInstance: Auth;
+try {
+  authInstance = resolvedApiKey ? getAuth(app) : ({ currentUser: null } as unknown as Auth);
+} catch (err) {
+  console.warn('Firebase Auth initialization skipped:', err);
+  authInstance = { currentUser: null } as unknown as Auth;
+}
+export const auth = authInstance;
 
 export enum OperationType {
   CREATE = 'create',

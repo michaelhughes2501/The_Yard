@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Users, 
-  Send, 
-  ShieldCheck, 
-  Scale, 
+import {
+  Users,
+  Send,
+  ShieldCheck,
+  Scale,
   LogOut,
   Menu,
   X,
@@ -21,7 +21,9 @@ import {
   Calendar,
   Sun,
   Moon,
-  Clapperboard
+  Clapperboard,
+  Compass,
+  ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
@@ -54,12 +56,57 @@ import MentalHealthSupport from './components/MentalHealthSupport';
 import EventCalendar from './components/EventCalendar';
 import ProgressTracker from './components/ProgressTracker';
 import StudioConsole from './components/StudioConsole';
+import ExpeditionPreferences from './components/ExpeditionPreferences';
 
-type Tab = 'yard' | 'kites' | 'resources' | 'tools' | 'forum' | 'mentorship' | 'vault' | 'profile' | 'opportunities' | 'admin' | 'help' | 'cases' | 'workspace' | 'mental-health' | 'calendar' | 'progress' | 'studio';
+type Tab =
+  | 'expedition'
+  | 'yard'
+  | 'kites'
+  | 'resources'
+  | 'tools'
+  | 'forum'
+  | 'mentorship'
+  | 'vault'
+  | 'profile'
+  | 'opportunities'
+  | 'admin'
+  | 'help'
+  | 'cases'
+  | 'workspace'
+  | 'mental-health'
+  | 'calendar'
+  | 'progress'
+  | 'studio';
+
+function GeometricSnowflake({ size = 28, className = '' }: { size?: number; className?: string }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 36 36"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <line x1="18" y1="3" x2="18" y2="33" />
+      <line x1="3" y1="18" x2="33" y2="18" />
+      <line x1="7.4" y1="7.4" x2="28.6" y2="28.6" />
+      <line x1="28.6" y1="7.4" x2="7.4" y2="28.6" />
+      <polyline points="14,7 18,11 22,7" />
+      <polyline points="14,29 18,25 22,29" />
+      <polyline points="7,14 11,18 7,22" />
+      <polyline points="29,14 25,18 29,22" />
+      <circle cx="18" cy="18" r="2.5" />
+    </svg>
+  );
+}
 
 function MainApp() {
   const { user, token, logout, isLoading } = useAuth();
-  const [activeTab, setActiveTab] = useState<Tab>('yard');
+  const [activeTab, setActiveTab] = useState<Tab>('expedition');
   const [forumSubTab, setForumSubTab] = useState<'discussions' | 'stories'>('discussions');
   const [opportunitiesSubTab, setOpportunitiesSubTab] = useState<'jobs' | 'housing' | 'tracker'>('jobs');
   const [resourcesShowAddPO, setResourcesShowAddPO] = useState(false);
@@ -95,15 +142,15 @@ function MainApp() {
       fetch('/api/notifications', {
         headers: { Authorization: `Bearer ${token}` }
       })
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          setNotifications(data);
-        } else {
-          console.error('Expected array of notifications, got:', data);
-        }
-      })
-      .catch(console.error);
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            setNotifications(data);
+          } else {
+            console.error('Expected array of notifications, got:', data);
+          }
+        })
+        .catch(console.error);
     };
     fetchNotifications();
     const interval = setInterval(fetchNotifications, 15000);
@@ -116,7 +163,7 @@ function MainApp() {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}` }
       });
-      setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, is_read: 1 } : n));
+      setNotifications(prev => prev.map(n => (n.id === notif.id ? { ...n, is_read: 1 } : n)));
     }
     setActiveTab(notif.link as Tab);
     setShowNotifications(false);
@@ -131,118 +178,177 @@ function MainApp() {
   };
 
   if (isLoading) {
-    return <div className="min-h-screen bg-[#E4E3E0] flex items-center justify-center font-serif italic text-2xl">Loading...</div>;
+    return (
+      <div className="min-h-screen wayfare-grid-bg flex items-center justify-center font-serif italic text-2xl text-[#261F1A]">
+        Loading...
+      </div>
+    );
   }
 
   if (!user) {
     return <Auth />;
   }
 
-  const tabs = [
+  const tabs: { id: Tab; name: string; icon: React.ComponentType<{ size?: number; className?: string }> }[] = [
+    { id: 'expedition', name: 'Expedition profile', icon: Compass },
     { id: 'yard', name: 'The Yard', icon: Users },
+    { id: 'mentorship', name: 'Mentorship', icon: ShieldCheck },
     { id: 'kites', name: 'Kites', icon: Send },
     { id: 'resources', name: 'Resources', icon: ShieldCheck },
-    { id: 'studio', name: 'Studio Settings', icon: Clapperboard },
-    { id: 'workspace', name: 'Workspace', icon: Globe },
-    { id: 'mentorship', name: 'Mentorship', icon: ShieldCheck },
     { id: 'forum', name: 'Forum', icon: MessageSquare },
     { id: 'opportunities', name: 'Opportunities', icon: Briefcase },
-    { id: 'mental-health', name: 'Wellness', icon: HeartPulse },
     { id: 'tools', name: 'Legal Tools', icon: Scale },
+    { id: 'mental-health', name: 'Wellness', icon: HeartPulse },
+    { id: 'studio', name: 'Studio Settings', icon: Clapperboard },
+    { id: 'workspace', name: 'Workspace', icon: Globe },
     { id: 'cases', name: 'Case Tracker', icon: Scale },
     { id: 'progress', name: 'Progress Tracker', icon: TrendingUp },
     { id: 'calendar', name: 'Calendar', icon: Calendar },
     { id: 'vault', name: 'The Vault', icon: Archive },
-    { id: 'help', name: 'Help Center', icon: HelpCircle },
+    { id: 'help', name: 'Help Center', icon: HelpCircle }
   ];
+
+  const activeTabObj = tabs.find(t => t.id === activeTab);
+  const activeTabLabel =
+    activeTab === 'profile'
+      ? 'Member profile'
+      : activeTab === 'admin'
+      ? 'Admin console'
+      : activeTabObj?.name || 'Expedition profile';
+
+  const displayName = user?.name || user?.username || 'Maren Voss';
+  const initials = displayName
+    .split(/\s+|_/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part[0]?.toUpperCase())
+    .join('') || 'MV';
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'yard': return <TheYard />;
-      case 'studio': return <StudioConsole />;
-      case 'opportunities': return <Opportunities initialTab={opportunitiesSubTab} />;
-      case 'forum': return (
-        <Forum 
-          initialSubSection={forumSubTab} 
-          onNavigateToKites={(userId, userName) => setActiveTab('kites')} 
-          onNavigateTab={(tab) => setActiveTab(tab as Tab)} 
-        />
-      );
-      case 'kites': return <Kites onNavigate={(tab: Tab) => setActiveTab(tab)} />;
-      case 'mentorship': return <MentorshipTab />;
-      case 'vault': return <Vault />;
-      case 'resources': return <Resources initialShowAddPO={resourcesShowAddPO} />;
-      case 'mental-health': return <MentalHealthSupport />;
-      case 'calendar': return <EventCalendar />;
-      case 'progress': return <ProgressTracker />;
-      case 'tools': return <Tools />;
-      case 'cases': return <CaseTracker />;
-      case 'workspace': return <WorkspaceHub />;
-      case 'help': return <HelpCenter />;
-      case 'profile': return <Profile />;
-      case 'admin': return <AdminDashboard />;
-      default: return <TheYard />;
+      case 'expedition':
+        return <ExpeditionPreferences onNavigateTab={tab => setActiveTab(tab as Tab)} />;
+      case 'yard':
+        return <TheYard />;
+      case 'studio':
+        return <StudioConsole />;
+      case 'opportunities':
+        return <Opportunities initialTab={opportunitiesSubTab} />;
+      case 'forum':
+        return (
+          <Forum
+            initialSubSection={forumSubTab}
+            onNavigateToKites={() => setActiveTab('kites')}
+            onNavigateTab={tab => setActiveTab(tab as Tab)}
+          />
+        );
+      case 'kites':
+        return <Kites onNavigate={(tab: Tab) => setActiveTab(tab)} />;
+      case 'mentorship':
+        return <MentorshipTab />;
+      case 'vault':
+        return <Vault />;
+      case 'resources':
+        return <Resources initialShowAddPO={resourcesShowAddPO} />;
+      case 'mental-health':
+        return <MentalHealthSupport />;
+      case 'calendar':
+        return <EventCalendar />;
+      case 'progress':
+        return <ProgressTracker />;
+      case 'tools':
+        return <Tools />;
+      case 'cases':
+        return <CaseTracker />;
+      case 'workspace':
+        return <WorkspaceHub />;
+      case 'help':
+        return <HelpCenter />;
+      case 'profile':
+        return <Profile />;
+      case 'admin':
+        return <AdminDashboard />;
+      default:
+        return <ExpeditionPreferences onNavigateTab={tab => setActiveTab(tab as Tab)} />;
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#E4E3E0] text-[#141414] font-sans selection:bg-[#141414] selection:text-[#E4E3E0]">
-      {/* Navigation */}
-      <nav className="sticky top-0 z-50 bg-[#E4E3E0] border-b border-[#141414] px-4 md:px-8 py-4 flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <div className="bg-[#141414] text-[#E4E3E0] p-2 rounded-sm">
-            <ShieldCheck size={24} />
+    <div className="min-h-screen wayfare-grid-bg text-[#261F1A] font-sans selection:bg-[#261F1A] selection:text-[#F6F2EB]">
+      {/* Top Bar matching Taste-Trail-Preferences.png */}
+      <header className="max-w-[1380px] mx-auto px-4 md:px-10 pt-6 pb-4 flex items-center justify-between gap-6">
+        {/* Left: Brand Lockup + Breadcrumb */}
+        <div className="flex items-center gap-8 md:gap-16 min-w-0">
+          <button
+            type="button"
+            onClick={() => setActiveTab('expedition')}
+            className="flex items-center gap-3.5 text-left cursor-pointer shrink-0"
+          >
+            <div className="w-11 h-11 rounded-xl bg-[#261F1A] text-[#F6F2EB] flex items-center justify-center shadow-xs">
+              <svg
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M3 19L9 7l4 6 3-4 5 10H3z" />
+              </svg>
+            </div>
+            <div>
+              <div className="text-lg font-serif font-medium text-[#261F1A] leading-tight">
+                Wayfare Kitchen
+              </div>
+              <div className="text-[9px] uppercase tracking-[0.22em] text-[#7D7166] leading-tight mt-0.5">
+                MEMBER
+                <br />
+                PREFERENCES
+              </div>
+            </div>
+          </button>
+
+          {/* Breadcrumb Trail */}
+          <div className="hidden sm:flex items-center gap-2 text-xs md:text-sm">
+            <span className="text-[#8A7D70]">Settings</span>
+            <ChevronRight size={14} className="text-[#8A7D70]" />
+            <span className="text-[#261F1A] font-medium">{activeTabLabel}</span>
           </div>
-          <h1 className="text-2xl font-bold tracking-tighter uppercase italic font-serif">The Yard</h1>
         </div>
 
-        {/* Desktop Nav */}
-          <div className="hidden md:flex gap-6 items-center flex-wrap justify-center">
-            <button 
-              onClick={() => setTheme(prev => prev === 'light' ? 'dark' : 'light')}
-              className="p-2 hover:bg-[#141414]/5 rounded-full transition-colors opacity-65 hover:opacity-100"
-              title={theme === 'light' ? 'Dark Mode' : 'Light Mode'}
-            >
-              {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
-            </button>
+        {/* Right: Quick Utilities + Member Name & Monogram Avatar */}
+        <div className="flex items-center gap-3 shrink-0">
+          <button
+            type="button"
+            onClick={() => setIsSearchOpen(true)}
+            className="p-2 rounded-full text-[#6E6359] hover:text-[#261F1A] hover:bg-[#261F1A]/5 transition-colors cursor-pointer"
+            title="Search"
+          >
+            <Search size={18} />
+          </button>
 
-            <button 
-              onClick={() => setIsSearchOpen(true)}
-              className="p-2 hover:bg-[#141414]/5 rounded-full transition-colors opacity-60 hover:opacity-100"
-              title="Search"
-            >
-              <Search size={20} />
-            </button>
+          <button
+            type="button"
+            onClick={() => setTheme(prev => (prev === 'light' ? 'dark' : 'light'))}
+            className="p-2 rounded-full text-[#6E6359] hover:text-[#261F1A] hover:bg-[#261F1A]/5 transition-colors cursor-pointer"
+            title={theme === 'light' ? 'Dark Mode' : 'Light Mode'}
+          >
+            {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
+          </button>
 
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => {
-                  if (tab.id === 'opportunities') {
-                    setOpportunitiesSubTab('jobs');
-                  }
-                  if (tab.id === 'resources') {
-                    setResourcesShowAddPO(false);
-                  }
-                  setActiveTab(tab.id as Tab);
-                }}
-                className={cn(
-                  "text-xs font-medium uppercase tracking-widest transition-all hover:opacity-100",
-                  activeTab === tab.id ? "opacity-100 border-b-2 border-[#141414]" : "opacity-40"
-                )}
-              >
-                {tab.name}
-              </button>
-            ))}
-            
-            <div className="relative ml-2">
-            <button 
+          {/* Notifications Dropdown */}
+          <div className="relative">
+            <button
+              type="button"
               onClick={() => setShowNotifications(!showNotifications)}
-              className="relative p-2 hover:bg-[#141414]/5 rounded-full transition-colors"
+              className="relative p-2 rounded-full text-[#6E6359] hover:text-[#261F1A] hover:bg-[#261F1A]/5 transition-colors cursor-pointer"
+              title="Notifications"
             >
-              <Bell size={20} />
+              <Bell size={18} />
               {notifications.filter(n => !n.is_read).length > 0 && (
-                <span className="absolute top-0 right-0 w-4 h-4 bg-red-600 text-white text-[10px] font-bold flex items-center justify-center rounded-full">
+                <span className="absolute top-0.5 right-0.5 w-4 h-4 bg-[#984B27] text-white text-[10px] font-bold flex items-center justify-center rounded-full">
                   {notifications.filter(n => !n.is_read).length}
                 </span>
               )}
@@ -254,30 +360,35 @@ function MainApp() {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 10 }}
-                  className="absolute right-0 mt-2 w-80 bg-white border border-[#141414] shadow-xl z-50"
+                  className="absolute right-0 mt-2 w-80 bg-[#F6F2EB] border border-[#D8CFC2] rounded-2xl shadow-xl z-50 overflow-hidden"
                 >
-                  <div className="p-4 border-b border-[#141414] flex justify-between items-center bg-[#141414] text-[#E4E3E0]">
+                  <div className="p-4 border-b border-[#D8CFC2] flex justify-between items-center bg-[#261F1A] text-[#F6F2EB]">
                     <h3 className="font-serif italic">Notifications</h3>
                     {notifications.filter(n => !n.is_read).length > 0 && (
-                      <button onClick={markAllAsRead} className="text-[10px] uppercase tracking-widest opacity-60 hover:opacity-100">
+                      <button
+                        type="button"
+                        onClick={markAllAsRead}
+                        className="text-[10px] uppercase tracking-widest opacity-70 hover:opacity-100 cursor-pointer"
+                      >
                         Mark all read
                       </button>
                     )}
                   </div>
-                  <div className="max-h-96 overflow-y-auto divide-y divide-[#141414]/10">
+                  <div className="max-h-96 overflow-y-auto divide-y divide-[#D8CFC2]/60">
                     {notifications.length === 0 ? (
-                      <div className="p-4 text-center text-sm opacity-60">No notifications</div>
+                      <div className="p-4 text-center text-sm text-[#786D62]">No notifications</div>
                     ) : (
                       notifications.map(notif => (
                         <button
                           key={notif.id}
+                          type="button"
                           onClick={() => handleNotificationClick(notif)}
                           className={cn(
-                            "w-full text-left p-4 hover:bg-[#141414]/5 transition-colors text-sm flex gap-3",
-                            !notif.is_read ? "bg-[#141414]/5" : "opacity-60"
+                            'w-full text-left p-4 hover:bg-[#261F1A]/5 transition-colors text-sm flex gap-3 cursor-pointer',
+                            !notif.is_read ? 'bg-[#261F1A]/5' : 'opacity-70'
                           )}
                         >
-                          {!notif.is_read && <div className="w-2 h-2 rounded-full bg-red-600 mt-1.5 shrink-0" />}
+                          {!notif.is_read && <div className="w-2 h-2 rounded-full bg-[#984B27] mt-1.5 shrink-0" />}
                           <div>
                             <p>{notif.content}</p>
                             <span className="text-[10px] uppercase tracking-widest opacity-60 mt-1 block">
@@ -293,137 +404,203 @@ function MainApp() {
             </AnimatePresence>
           </div>
 
-            <button 
-              onClick={() => setActiveTab('profile')}
-              className={cn(
-                "ml-2 flex items-center gap-2 text-xs uppercase tracking-widest transition-opacity hover:opacity-100",
-                activeTab === 'profile' ? "opacity-100 font-bold" : "opacity-40"
-              )}
+          {/* Member Profile Pill & Warm Ochre Monogram Avatar */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('profile')}
+            className="flex items-center gap-3 pl-2 cursor-pointer group"
+          >
+            <span className="hidden md:inline text-xs font-medium text-[#70655B] group-hover:text-[#261F1A] transition-colors">
+              {displayName === 'maren_voss' ? 'Maren Voss' : displayName}
+            </span>
+            <div className="w-9 h-9 rounded-full bg-[#C5A47E] text-[#261F1A] text-xs font-bold flex items-center justify-center shadow-xs">
+              {initials}
+            </div>
+          </button>
+
+          {['super_admin', 'admin', 'moderator'].includes(
+            user?.role || (user?.is_admin === 1 ? 'super_admin' : 'user')
+          ) && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('admin')}
+              className="hidden md:flex items-center gap-1 text-xs text-[#984B27] hover:underline cursor-pointer"
+              title="Admin Console"
             >
-              {user?.avatar_url ? (
-                <img 
-                  src={user.avatar_url} 
-                  alt={user?.username} 
-                  className="w-5 h-5 rounded-full object-cover border border-[#141414]/20"
-                />
-              ) : (
-                <UserCircle size={16} />
-              )}
-              Profile
+              <ShieldAlert size={15} />
             </button>
+          )}
 
-            {['super_admin', 'admin', 'moderator'].includes(user?.role || (user?.is_admin === 1 ? 'super_admin' : 'user')) && (
-              <button 
-                onClick={() => setActiveTab('admin')}
-                className="ml-2 flex items-center gap-2 text-xs uppercase tracking-widest text-red-600 opacity-60 hover:opacity-100 transition-opacity"
-              >
-                <ShieldAlert size={16} /> Admin
-              </button>
-            )}
+          <button
+            type="button"
+            onClick={logout}
+            className="hidden md:flex items-center gap-1 p-2 rounded-full text-[#70655B] hover:text-[#261F1A] hover:bg-[#261F1A]/5 transition-colors cursor-pointer"
+            title="Log out"
+          >
+            <LogOut size={16} />
+          </button>
 
-            <button 
-              onClick={logout}
-              className="ml-2 flex items-center gap-2 text-xs uppercase tracking-widest opacity-40 hover:opacity-100 transition-opacity"
-            >
-              <LogOut size={16} /> Logout
-            </button>
-          </div>
+          <button
+            type="button"
+            className="lg:hidden p-2 text-[#261F1A]"
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+          >
+            {isMenuOpen ? <X size={22} /> : <Menu size={22} />}
+          </button>
+        </div>
+      </header>
 
-        <button className="md:hidden" onClick={() => setIsMenuOpen(!isMenuOpen)}>
-          {isMenuOpen ? <X /> : <Menu />}
-        </button>
-      </nav>
-
-      {/* Mobile Menu */}
+      {/* Mobile Slide-Over Menu */}
       <AnimatePresence>
         {isMenuOpen && (
           <motion.div
-            initial={{ opacity: 0, y: -20 }}
+            initial={{ opacity: 0, y: -16 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="md:hidden fixed inset-0 z-40 bg-[#E4E3E0] pt-24 px-8"
+            exit={{ opacity: 0, y: -16 }}
+            className="lg:hidden fixed inset-0 z-40 wayfare-grid-bg pt-24 px-6 overflow-y-auto"
           >
-            <div className="flex flex-col gap-8 max-h-[85vh] overflow-y-auto pb-10">
-              <button 
-                onClick={() => { setTheme(prev => prev === 'light' ? 'dark' : 'light'); setIsMenuOpen(false); }}
-                className="text-3xl font-serif italic text-left border-b border-[#141414]/10 pb-4 flex items-center justify-between"
-              >
-                <span>{theme === 'light' ? 'Activate Dark' : 'Activate Light'}</span>
-                {theme === 'light' ? <Moon size={24} /> : <Sun size={24} />}
-              </button>
-              {tabs.map((tab) => (
+            <div className="max-w-md mx-auto space-y-2 pb-12">
+              {tabs.map(tab => {
+                const Icon = tab.icon;
+                const active = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => {
+                      if (tab.id === 'opportunities') setOpportunitiesSubTab('jobs');
+                      if (tab.id === 'resources') setResourcesShowAddPO(false);
+                      setActiveTab(tab.id);
+                      setIsMenuOpen(false);
+                    }}
+                    className={cn(
+                      'w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-medium text-left transition-all',
+                      active
+                        ? 'bg-[#F6F2EB] text-[#261F1A] border border-[#D8CFC2] shadow-xs'
+                        : 'text-[#6E6359] hover:text-[#261F1A]'
+                    )}
+                  >
+                    <Icon size={17} />
+                    <span>{tab.name}</span>
+                  </button>
+                );
+              })}
+              <div className="pt-4 border-t border-[#D8CFC2] flex items-center justify-between">
                 <button
-                  key={tab.id}
+                  type="button"
                   onClick={() => {
-                    if (tab.id === 'opportunities') {
-                      setOpportunitiesSubTab('jobs');
-                    }
-                    if (tab.id === 'resources') {
-                      setResourcesShowAddPO(false);
-                    }
-                    setActiveTab(tab.id as Tab);
+                    setActiveTab('profile');
                     setIsMenuOpen(false);
                   }}
-                  className="text-3xl font-serif italic text-left border-b border-[#141414]/10 pb-4"
+                  className="text-sm font-medium text-[#261F1A] flex items-center gap-2"
                 >
-                  {tab.name}
+                  <UserCircle size={18} /> Member Profile
                 </button>
-              ))}
-              <button 
-                onClick={() => { setActiveTab('help'); setIsMenuOpen(false); }}
-                className="text-3xl font-serif italic text-left border-b border-[#141414]/10 pb-4"
-              >
-                Help Center
-              </button>
-              <button 
-                onClick={() => { setActiveTab('profile'); setIsMenuOpen(false); }}
-                className="text-3xl font-serif italic text-left border-b border-[#141414]/10 pb-4 flex items-center gap-3"
-              >
-                {user?.avatar_url ? (
-                  <img 
-                    src={user.avatar_url} 
-                    alt={user?.username} 
-                    className="w-10 h-10 rounded-full object-cover border border-[#141414]/20 animate-fade-in"
-                  />
-                ) : (
-                  <UserCircle size={28} className="opacity-40" />
-                )}
-                Profile
-              </button>
-              {['super_admin', 'admin', 'moderator'].includes(user?.role || (user?.is_admin === 1 ? 'super_admin' : 'user')) && (
-                <button 
-                  onClick={() => { setActiveTab('admin'); setIsMenuOpen(false); }}
-                  className="text-3xl font-serif italic text-left border-b border-[#141414]/10 pb-4 text-red-600"
+                <button
+                  type="button"
+                  onClick={() => {
+                    logout();
+                    setIsMenuOpen(false);
+                  }}
+                  className="text-sm font-medium text-[#984B27] flex items-center gap-1.5"
                 >
-                  Admin Dashboard
+                  <LogOut size={16} /> Log out
                 </button>
-              )}
-              <button 
-                onClick={() => { logout(); setIsMenuOpen(false); }}
-                className="text-xl font-serif italic text-left text-red-600 pt-4"
-              >
-                Logout
-              </button>
+              </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 md:px-8 py-8">
-        <motion.div
-          key={activeTab}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.4, ease: "easeOut" }}
-        >
-          {renderContent()}
-        </motion.div>
-      </main>
+      {/* Main Container matching Taste-Trail-Preferences.png */}
+      <div className="max-w-[1380px] mx-auto px-4 md:px-10 py-4 space-y-8">
+        {/* Deep Espresso Hero Card */}
+        <section className="bg-[#261F1A] text-[#F7F3EC] rounded-2xl px-7 py-8 md:px-12 md:py-10 flex flex-col md:flex-row md:items-center justify-between gap-8 shadow-sm">
+          <div className="max-w-xl space-y-3">
+            <div className="text-[11px] uppercase tracking-[0.22em] text-[#C69249] font-medium">
+              SOLSTICE GREETINGS · YEAR FOUR OF YOUR JOURNEY
+            </div>
+            <h1 className="text-3xl md:text-[38px] font-serif leading-[1.18] text-[#F7F3EC] tracking-tight">
+              Happy holidays, {displayName === 'maren_voss' ? 'Maren' : displayName.split(' ')[0]}. The trail rests — the table doesn’t.
+            </h1>
+            <p className="text-xs md:text-sm text-[#B8AFA4] leading-relaxed pt-1">
+              You cooked 142 expedition meals across 11 cuisines this year and stayed connected across The Yard. Your December route and community preferences are set below — adjust them before Dec 19.
+            </p>
+          </div>
+
+          {/* Right Ornamental Terracotta Geometric Snowflakes */}
+          <div className="hidden md:flex items-center gap-7 pr-4 shrink-0">
+            <GeometricSnowflake size={22} className="text-[#9E6B43] opacity-75" />
+            <GeometricSnowflake size={38} className="text-[#A9532A]" />
+            <GeometricSnowflake size={18} className="text-[#9E6B43] opacity-75" />
+          </div>
+        </section>
+
+        {/* Workspace Layout: Left Sidebar Navigation + Main Content */}
+        <div className="flex flex-col lg:flex-row items-start gap-8">
+          {/* Left Column Sidebar matching Taste-Trail-Preferences.png */}
+          <aside className="w-full lg:w-64 shrink-0 space-y-6">
+            <nav className="space-y-1">
+              {tabs.map(tab => {
+                const Icon = tab.icon;
+                const active = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => {
+                      if (tab.id === 'opportunities') setOpportunitiesSubTab('jobs');
+                      if (tab.id === 'resources') setResourcesShowAddPO(false);
+                      setActiveTab(tab.id);
+                    }}
+                    className={cn(
+                      'w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-all cursor-pointer text-left',
+                      active
+                        ? 'bg-[#F6F2EB] text-[#261F1A] font-semibold shadow-xs border border-[#DED5C8]'
+                        : 'text-[#6E6359] hover:text-[#261F1A] hover:bg-[#F6F2EB]/40 font-medium'
+                    )}
+                  >
+                    <Icon
+                      size={16}
+                      className={active ? 'text-[#261F1A]' : 'text-[#8C7F73]'}
+                    />
+                    <span className="truncate">{tab.name}</span>
+                  </button>
+                );
+              })}
+            </nav>
+
+            {/* CURRENT PLAN Card matching bottom-left of Taste-Trail-Preferences.png */}
+            <div className="rounded-2xl border border-[#D5CBC0] bg-[#EAE2D6]/60 p-5 space-y-1.5">
+              <div className="text-[10px] uppercase tracking-[0.2em] text-[#7D7166] font-medium">
+                CURRENT PLAN
+              </div>
+              <div className="text-lg font-serif text-[#261F1A]">
+                Pathfinder · Duo
+              </div>
+              <div className="text-xs text-[#74695E] tabular-nums">
+                3 expeditions / week — $71.40
+              </div>
+            </div>
+          </aside>
+
+          {/* Main Active View */}
+          <main className="flex-1 min-w-0 w-full">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.2 }}
+            >
+              {renderContent()}
+            </motion.div>
+          </main>
+        </div>
+      </div>
 
       <SOSButton />
 
-      <QuickActions 
+      <QuickActions
         onAction={(action: 'jobs' | 'housing' | 'contact') => {
           if (action === 'jobs') {
             setOpportunitiesSubTab('jobs');
@@ -439,44 +616,56 @@ function MainApp() {
       />
 
       {isSearchOpen && (
-        <GlobalSearch 
-          onClose={() => setIsSearchOpen(false)} 
+        <GlobalSearch
+          onClose={() => setIsSearchOpen(false)}
           onNavigate={(tab, subTab) => {
             if (subTab === 'stories' || subTab === 'discussions') {
               setForumSubTab(subTab);
             }
             setActiveTab(tab as Tab);
-          }} 
+          }}
         />
       )}
 
-      {/* Footer */}
-      <footer className="border-t border-[#141414] mt-20 py-12 px-4 md:px-8 bg-[#141414] text-[#E4E3E0]">
-        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-12">
-          <div>
-            <h3 className="font-serif italic text-xl mb-4">Second Chance Network</h3>
-            <p className="text-sm opacity-60 leading-relaxed">
-              A platform built by and for the formerly incarcerated. We believe in redemption, 
-              community, and the power of a second chance.
-            </p>
-          </div>
-          <div>
-            <h4 className="text-xs uppercase tracking-widest opacity-40 mb-4">Quick Links</h4>
-            <ul className="flex flex-col gap-2 text-sm">
-              <li><button type="button" onClick={() => { setForumSubTab('stories'); setActiveTab('forum'); }} className="hover:underline focus-visible:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60 text-left font-medium text-amber-200/90">Success Stories</button></li>
-              <li><button type="button" onClick={() => setActiveTab('mental-health')} className="hover:underline focus-visible:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60 text-left">Mental Health Support</button></li>
-              <li><button type="button" onClick={() => { setResourcesShowAddPO(false); setActiveTab('resources'); }} className="hover:underline focus-visible:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60 text-left">Parole Resources</button></li>
-              <li><button type="button" onClick={() => setActiveTab('tools')} className="hover:underline focus-visible:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60 text-left">Legal Aid</button></li>
-            </ul>
-          </div>
-          <div>
-            <h4 className="text-xs uppercase tracking-widest opacity-40 mb-4">Emergency</h4>
-            <p className="text-sm">If you are in crisis, please call 988 or visit the nearest emergency room.</p>
-          </div>
+      {/* Subtle Editorial Footer */}
+      <footer className="max-w-[1380px] mx-auto px-4 md:px-10 mt-20 pb-12 pt-8 border-t border-[#D6CCC0] text-xs text-[#74695E] flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <span className="font-serif text-sm text-[#261F1A]">Wayfare Kitchen · The Yard Network</span>
+          <span>·</span>
+          <span>Expedition & Re-Entry Community Portal</span>
         </div>
-        <div className="max-w-7xl mx-auto mt-12 pt-8 border-t border-white/10 text-[10px] uppercase tracking-widest opacity-40 flex justify-between">
-          <span>© 2026 The Yard</span>
-          <span>Built for Redemption</span>
+        <div className="flex flex-wrap items-center gap-5">
+          <button
+            type="button"
+            onClick={() => setActiveTab('expedition')}
+            className="hover:text-[#261F1A] cursor-pointer"
+          >
+            Expedition Profile
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('mentorship')}
+            className="hover:text-[#261F1A] cursor-pointer"
+          >
+            Mentorship Questionnaire
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setForumSubTab('stories');
+              setActiveTab('forum');
+            }}
+            className="hover:text-[#261F1A] cursor-pointer"
+          >
+            Success Stories
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('resources')}
+            className="hover:text-[#261F1A] cursor-pointer"
+          >
+            Resources & Parole
+          </button>
         </div>
       </footer>
     </div>
@@ -490,3 +679,4 @@ export default function App() {
     </AuthProvider>
   );
 }
+
