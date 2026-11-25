@@ -18,7 +18,7 @@ function usersTable() {
   return db;
 }
 
-test("hashPassword stores a bcrypt hash, never the plain text", async () => {
+await test("hashPassword stores a bcrypt hash, never the plain text", async () => {
   const hash = await hashPassword("correct horse");
   assert.notEqual(hash, "correct horse");
   assert.ok(isPasswordHash(hash));
@@ -26,7 +26,7 @@ test("hashPassword stores a bcrypt hash, never the plain text", async () => {
   assert.ok(isPasswordHash(hashPasswordSync("correct horse")));
 });
 
-test("verifyPassword accepts the right password for a hash and rejects others", async () => {
+await test("verifyPassword accepts the right password for a hash and rejects others", async () => {
   const hash = await hashPassword("correct horse");
   assert.deepEqual(await verifyPassword("correct horse", hash), { ok: true, needsRehash: false });
   assert.deepEqual(await verifyPassword("wrong", hash), { ok: false, needsRehash: false });
@@ -34,30 +34,30 @@ test("verifyPassword accepts the right password for a hash and rejects others", 
   assert.deepEqual(await verifyPassword(undefined, hash), { ok: false, needsRehash: false });
 });
 
-test("verifyPassword still lets legacy plain-text accounts in and asks for a rehash", async () => {
+await test("verifyPassword still lets legacy plain-text accounts in and asks for a rehash", async () => {
   assert.deepEqual(await verifyPassword("password123", "password123"), { ok: true, needsRehash: true });
   assert.deepEqual(await verifyPassword("password12", "password123"), { ok: false, needsRehash: false });
 });
 
-test("verifyPassword asks to rehash hashes made with a lower work factor", async () => {
+await test("verifyPassword asks to rehash hashes made with a lower work factor", async () => {
   const weak = bcrypt.hashSync("correct horse", 4);
   assert.deepEqual(await verifyPassword("correct horse", weak), { ok: true, needsRehash: true });
 });
 
-test("verifyPassword rejects accounts with no stored password", async () => {
+await test("verifyPassword rejects accounts with no stored password", async () => {
   assert.deepEqual(await verifyPassword("anything", undefined), { ok: false, needsRehash: false });
   assert.deepEqual(await verifyPassword("anything", null), { ok: false, needsRehash: false });
   assert.deepEqual(await verifyPassword("", ""), { ok: false, needsRehash: false });
 });
 
-test("isUsablePassword only accepts non-empty strings", () => {
+await test("isUsablePassword only accepts non-empty strings", () => {
   assert.equal(isUsablePassword("a"), true);
   assert.equal(isUsablePassword(""), false);
   assert.equal(isUsablePassword(null), false);
   assert.equal(isUsablePassword(42), false);
 });
 
-test("migratePlainTextPasswords hashes plain-text rows and keeps their passwords working", async () => {
+await test("migratePlainTextPasswords hashes plain-text rows and keeps their passwords working", async () => {
   const db = usersTable();
   const existing = await hashPassword("already hashed");
   const insert = db.prepare("INSERT INTO users (id, username, password) VALUES (?, ?, ?)");
@@ -80,7 +80,7 @@ test("migratePlainTextPasswords hashes plain-text rows and keeps their passwords
   assert.equal(await migratePlainTextPasswords(db), 0, "running again changes nothing");
 });
 
-test("migratePlainTextPasswords does not overwrite a password changed while it ran", async () => {
+await test("migratePlainTextPasswords does not overwrite a password changed while it ran", async () => {
   const db = usersTable();
   db.prepare("INSERT INTO users (id, username, password) VALUES (?, ?, ?)").run("1", "marcus", "old-plain");
 

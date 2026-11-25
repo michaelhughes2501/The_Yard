@@ -17,7 +17,7 @@
     "@tailwindcss/vite": "^4.1.14",
     "@vis.gl/react-google-maps": "^1.8.3",
     "@vitejs/plugin-react": "^5.0.4",
-    "bcryptjs": "^3.0.3",
+    "bcryptjs": "3.0.3",
     "better-sqlite3": "^12.4.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
