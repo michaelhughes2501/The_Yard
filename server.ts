@@ -6,6 +6,7 @@ import Database from "better-sqlite3";
 import crypto from "crypto";
 import fs from "fs";
 import { GoogleGenAI } from "@google/genai";
+import { hashPassword, hashPasswordSync, isUsablePassword, migratePlainTextPasswords, verifyPassword } from "./passwords";
 
 function getGeminiClient(): GoogleGenAI {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -641,7 +642,7 @@ function seedCommunityData() {
         (id, username, email, password, facility, location, bio, public_status, interests, is_mentor, looking_to_meet)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        u.id, u.username, u.email, u.password, u.facility, u.location, u.bio,
+        u.id, u.username, u.email, hashPasswordSync(u.password), u.facility, u.location, u.bio,
         u.public_status, u.interests, u.is_mentor, u.looking_to_meet
       );
 
@@ -663,6 +664,15 @@ function seedCommunityData() {
 
 async function startServer() {
   seedCommunityData();
+
+  // Accounts created before passwords were hashed still hold plain text.
+  // Hash them in the background; login also upgrades any it meets first.
+  migratePlainTextPasswords(db)
+    .then((count) => {
+      if (count > 0) console.log(`Hashed ${count} plain-text password(s).`);
+    })
+    .catch((err) => console.error("Password migration failed:", err));
+
   const app = express();
   const PORT = 3000;
 
@@ -691,11 +701,15 @@ async function startServer() {
   });
 
   // Auth Routes
-  app.post("/api/auth/register", (req, res) => {
+  app.post("/api/auth/register", async (req, res) => {
     const { username, email, password, facility, location, bio } = req.body;
+    if (!isUsablePassword(password)) {
+      return res.status(400).json({ error: "Password is required" });
+    }
     try {
       const id = crypto.randomUUID();
-      db.prepare("INSERT INTO users (id, username, email, password, facility, location, bio) VALUES (?, ?, ?, ?, ?, ?, ?)").run(id, username, email, password, facility, location, bio);
+      const passwordHash = await hashPassword(password);
+      db.prepare("INSERT INTO users (id, username, email, password, facility, location, bio) VALUES (?, ?, ?, ?, ?, ?, ?)").run(id, username, email, passwordHash, facility, location, bio);
       const token = crypto.randomUUID();
       db.prepare("INSERT INTO sessions (token, user_id) VALUES (?, ?)").run(token, id);
       res.json({ token, user: { id, username, email, facility, location, bio } });
@@ -704,15 +718,26 @@ async function startServer() {
     }
   });
 
-  app.post("/api/auth/login", (req, res) => {
+  app.post("/api/auth/login", async (req, res) => {
     const { username, password } = req.body;
-    const user = db.prepare("SELECT * FROM users WHERE username = ? AND password = ?").get(username, password) as any;
-    if (!user) return res.status(401).json({ error: "Invalid credentials" });
-    if (user.is_suspended === 1) return res.status(403).json({ error: "Account suspended" });
-    
-    const token = crypto.randomUUID();
-    db.prepare("INSERT INTO sessions (token, user_id) VALUES (?, ?)").run(token, user.id);
-    res.json({ token, user: { id: user.id, username: user.username, email: user.email, facility: user.facility, location: user.location, bio: user.bio, role: user.role === 'user' && user.is_admin === 1 ? 'super_admin' : user.role, avatar_url: user.avatar_url } });
+    try {
+      const user = db.prepare("SELECT * FROM users WHERE username = ?").get(username) as any;
+      const check = await verifyPassword(password, user?.password);
+      if (!user || !check.ok) return res.status(401).json({ error: "Invalid credentials" });
+      if (user.is_suspended === 1) return res.status(403).json({ error: "Account suspended" });
+
+      if (check.needsRehash) {
+        // Upgrade a legacy plain-text (or weaker) password now that we know it.
+        db.prepare("UPDATE users SET password = ? WHERE id = ? AND password = ?").run(await hashPassword(password), user.id, user.password);
+      }
+
+      const token = crypto.randomUUID();
+      db.prepare("INSERT INTO sessions (token, user_id) VALUES (?, ?)").run(token, user.id);
+      res.json({ token, user: { id: user.id, username: user.username, email: user.email, facility: user.facility, location: user.location, bio: user.bio, role: user.role === 'user' && user.is_admin === 1 ? 'super_admin' : user.role, avatar_url: user.avatar_url } });
+    } catch (e) {
+      console.error("Login error:", e);
+      res.status(500).json({ error: "Login failed" });
+    }
   });
 
   app.get("/api/auth/me", requireAuth, (req: any, res) => {
@@ -751,8 +776,11 @@ async function startServer() {
     }
   });
 
-  app.post("/api/auth/reset-password", (req, res) => {
+  app.post("/api/auth/reset-password", async (req, res) => {
     const { token, newPassword } = req.body;
+    if (!isUsablePassword(newPassword)) {
+      return res.status(400).json({ error: "New password is required" });
+    }
     
     const reset = db.prepare("SELECT user_id, expires_at FROM password_resets WHERE token = ?").get(token) as any;
     
@@ -765,7 +793,14 @@ async function startServer() {
       return res.status(400).json({ error: "Reset token has expired" });
     }
     
-    db.prepare("UPDATE users SET password = ? WHERE id = ?").run(newPassword, reset.user_id);
+    let passwordHash: string;
+    try {
+      passwordHash = await hashPassword(newPassword);
+    } catch (e) {
+      console.error("Password reset error:", e);
+      return res.status(500).json({ error: "Password reset failed" });
+    }
+    db.prepare("UPDATE users SET password = ? WHERE id = ?").run(passwordHash, reset.user_id);
     db.prepare("DELETE FROM password_resets WHERE token = ?").run(token);
     
     // Also invalidate all existing sessions for security
