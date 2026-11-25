@@ -7,6 +7,16 @@ import crypto from "crypto";
 import fs from "fs";
 import { GoogleGenAI } from "@google/genai";
 import { hashPassword, hashPasswordSync, isUsablePassword, migratePlainTextPasswords, verifyPassword } from "./passwords";
+import {
+  ensurePasswordResetSchema,
+  FixedWindowLimiter,
+  INVALID_RESET_LINK_MESSAGE,
+  normalizeEmail,
+  requestPasswordReset,
+  RESET_REQUESTED_MESSAGE,
+  resetPasswordWithToken,
+} from "./passwordReset";
+import { missingEmailSettings, sendPasswordResetEmail } from "./mailer";
 
 function getGeminiClient(): GoogleGenAI {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -49,12 +59,6 @@ db.exec(`
     looking_for TEXT,
     relationship_status TEXT,
     incarceration_details TEXT
-  );
-  CREATE TABLE IF NOT EXISTS password_resets (
-    token TEXT PRIMARY KEY,
-    user_id TEXT,
-    expires_at DATETIME,
-    FOREIGN KEY(user_id) REFERENCES users(id)
   );
   CREATE TABLE IF NOT EXISTS mentorships (
     id TEXT PRIMARY KEY,
@@ -346,6 +350,9 @@ try {
 try {
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)");
 } catch (e) {}
+
+// Reset tokens are stored hashed; this also drops the old plain-text table.
+ensurePasswordResetSchema(db);
 
 try {
   db.exec("ALTER TABLE users ADD COLUMN is_mentor INTEGER DEFAULT 0");
@@ -676,6 +683,22 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Behind a proxy (Cloud Run, Vercel, Render...) set TRUST_PROXY=1 so req.ip is
+  // each visitor's address and the reset limits below count people separately.
+  const trustProxy = process.env.TRUST_PROXY?.trim();
+  if (trustProxy) app.set("trust proxy", /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy);
+  const clientKey = (req: express.Request) => req.ip || req.socket.remoteAddress || "unknown";
+
+  // Password reset limits (in memory, per server process).
+  const resetRequestsByIp = new FixedWindowLimiter(10, 15 * 60 * 1000);
+  const resetRequestsByEmail = new FixedWindowLimiter(3, 60 * 60 * 1000);
+  const resetAttemptsByIp = new FixedWindowLimiter(20, 15 * 60 * 1000);
+
+  const missingEmail = missingEmailSettings();
+  if (missingEmail.length > 0) {
+    console.warn(`Password reset emails are off until these are set: ${missingEmail.join(", ")}.`);
+  }
+
   app.use(express.json({ limit: '50mb' }));
 
   // Auth Middleware
@@ -755,58 +778,44 @@ async function startServer() {
   });
 
   app.post("/api/auth/forgot-password", (req, res) => {
-    const { email } = req.body;
-    const user = db.prepare("SELECT id FROM users WHERE email = ?").get(email) as any;
-    
-    if (user) {
-      const resetToken = crypto.randomBytes(32).toString('hex');
-      const expiresAt = new Date();
-      expiresAt.setHours(expiresAt.getHours() + 1); // 1 hour expiration
-      
-      db.prepare("INSERT INTO password_resets (token, user_id, expires_at) VALUES (?, ?, ?)").run(
-        resetToken, user.id, expiresAt.toISOString()
-      );
-      
-      // In a real app, send an email here. For this environment, we'll return it in the response for testing/demo purposes.
-      console.log(`Password reset token for ${email}: ${resetToken}`);
-      res.json({ success: true, message: "If an account exists, a reset link has been sent.", _devToken: resetToken });
-    } else {
-      // Always return success to prevent email enumeration
-      res.json({ success: true, message: "If an account exists, a reset link has been sent." });
+    const email = normalizeEmail(req.body?.email);
+    if (!email) {
+      return res.status(400).json({ error: "Enter the email address on your account" });
     }
+    if (!resetRequestsByIp.take(clientKey(req))) {
+      return res.status(429).json({ error: "Too many reset requests. Try again in a few minutes." });
+    }
+
+    // Reply first, and the same way every time, so neither the answer nor how
+    // long it takes shows whether the email belongs to an account. The reset
+    // link only ever goes to the account's own email address.
+    res.json({ success: true, message: RESET_REQUESTED_MESSAGE });
+
+    if (!resetRequestsByEmail.take(email.toLowerCase())) return;
+    setImmediate(() => {
+      requestPasswordReset(db, email, { appUrl: process.env.APP_URL, send: (message) => sendPasswordResetEmail(message) })
+        .then((outcome) => {
+          if (outcome.status === "sent") console.log(`Password reset email sent for user ${outcome.userId}.`);
+          if (outcome.status === "not_sent") console.error(`Password reset email not sent for user ${outcome.userId}: ${outcome.reason}`);
+        })
+        .catch((err) => console.error("Password reset request failed:", err));
+    });
   });
 
   app.post("/api/auth/reset-password", async (req, res) => {
-    const { token, newPassword } = req.body;
-    if (!isUsablePassword(newPassword)) {
-      return res.status(400).json({ error: "New password is required" });
+    if (!resetAttemptsByIp.take(clientKey(req))) {
+      return res.status(429).json({ error: "Too many attempts. Try again in a few minutes." });
     }
-    
-    const reset = db.prepare("SELECT user_id, expires_at FROM password_resets WHERE token = ?").get(token) as any;
-    
-    if (!reset) {
-      return res.status(400).json({ error: "Invalid or expired reset token" });
-    }
-    
-    if (new Date(reset.expires_at) < new Date()) {
-      db.prepare("DELETE FROM password_resets WHERE token = ?").run(token);
-      return res.status(400).json({ error: "Reset token has expired" });
-    }
-    
-    let passwordHash: string;
+    const { token, newPassword } = req.body ?? {};
     try {
-      passwordHash = await hashPassword(newPassword);
+      const outcome = await resetPasswordWithToken(db, token, newPassword);
+      if (outcome.ok) return res.json({ success: true });
+      if (outcome.reason === "password_required") return res.status(400).json({ error: "New password is required" });
+      return res.status(400).json({ error: INVALID_RESET_LINK_MESSAGE });
     } catch (e) {
       console.error("Password reset error:", e);
       return res.status(500).json({ error: "Password reset failed" });
     }
-    db.prepare("UPDATE users SET password = ? WHERE id = ?").run(passwordHash, reset.user_id);
-    db.prepare("DELETE FROM password_resets WHERE token = ?").run(token);
-    
-    // Also invalidate all existing sessions for security
-    db.prepare("DELETE FROM sessions WHERE user_id = ?").run(reset.user_id);
-    
-    res.json({ success: true });
   });
 
   // Data Routes
@@ -2432,8 +2441,8 @@ async function startServer() {
     // Delete user's sessions
     db.prepare("DELETE FROM sessions WHERE user_id = ?").run(userId);
     
-    // Delete user's password resets
-    db.prepare("DELETE FROM password_resets WHERE user_id = ?").run(userId);
+    // Delete user's password reset tokens
+    db.prepare("DELETE FROM password_reset_tokens WHERE user_id = ?").run(userId);
     
     // Delete user's parole officers
     db.prepare("DELETE FROM parole_officers WHERE user_id = ?").run(userId);

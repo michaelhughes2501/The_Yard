@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "test": "tsx --test passwords.test.ts"
+    "test": "tsx --test passwords.test.ts passwordReset.test.ts"
   },
   "dependencies": {
     "@google/genai": "^3.6.1",

@@ -1,15 +1,21 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ArrowLeft, Compass, Sparkles } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 
 type AuthView = 'login' | 'register' | 'forgot' | 'reset';
 
+/** The token from an emailed reset link (`#reset-token=...`), or '' when the page wasn't opened from one. */
+function readResetTokenFromLink(): string {
+  if (typeof window === 'undefined') return '';
+  return new URLSearchParams(window.location.hash.replace(/^#/, '')).get('reset-token') ?? '';
+}
+
 export default function Auth() {
-  const [view, setView] = useState<AuthView>('login');
+  const [resetToken, setResetToken] = useState(readResetTokenFromLink);
+  const [view, setView] = useState<AuthView>(() => (resetToken ? 'reset' : 'login'));
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [resetToken, setResetToken] = useState('');
   const [facility, setFacility] = useState('');
   const [location, setLocation] = useState('');
   const [bio, setBio] = useState('');
@@ -17,6 +23,13 @@ export default function Auth() {
   const [successMsg, setSuccessMsg] = useState('');
   const [isDemoLoading, setIsDemoLoading] = useState(false);
   const { login } = useAuth();
+
+  // Take the reset token out of the address bar so it doesn't linger in history.
+  useEffect(() => {
+    if (readResetTokenFromLink()) {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+  }, []);
 
   const handleQuickDemoLogin = async () => {
     setError('');
@@ -88,11 +101,7 @@ export default function Auth() {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to process request');
-        setSuccessMsg(data.message + (data._devToken ? ` (Dev Token: ${data._devToken})` : ''));
-        if (data._devToken) {
-          setResetToken(data._devToken);
-          setView('reset');
-        }
+        setSuccessMsg(data.message);
       } else if (view === 'reset') {
         const res = await fetch('/api/auth/reset-password', {
           method: 'POST',
@@ -101,9 +110,10 @@ export default function Auth() {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to reset password');
-        setSuccessMsg('Password reset successfully. You can now log in.');
+        setSuccessMsg('Password updated. Sign in with your new password.');
         setView('login');
         setPassword('');
+        setResetToken('');
       }
     } catch (err: any) {
       setError(err.message);
@@ -181,7 +191,7 @@ export default function Auth() {
           )}
 
           {successMsg && (
-            <div className="bg-emerald-900/10 border border-emerald-800/30 text-emerald-900 px-4 py-3 rounded-xl mb-5 text-xs font-medium break-all">
+            <div className="bg-emerald-900/10 border border-emerald-800/30 text-emerald-900 px-4 py-3 rounded-xl mb-5 text-xs font-medium break-words">
               {successMsg}
             </div>
           )}
@@ -215,19 +225,6 @@ export default function Auth() {
               </div>
             )}
 
-            {view === 'reset' && (
-              <div>
-                <label className="block text-xs font-semibold text-[#261F1A] mb-1.5">Reset Token</label>
-                <input
-                  type="text"
-                  required
-                  value={resetToken}
-                  onChange={e => setResetToken(e.target.value)}
-                  className="w-full border border-[#D5CBC0] bg-[#FAF7F2] rounded-xl p-3 text-sm focus:outline-none focus:border-[#261F1A]"
-                />
-              </div>
-            )}
-
             {(view === 'login' || view === 'register' || view === 'reset') && (
               <div>
                 <label className="block text-xs font-semibold text-[#261F1A] mb-1.5">
@@ -236,6 +233,7 @@ export default function Auth() {
                 <input
                   type="password"
                   required
+                  autoComplete={view === 'login' ? 'current-password' : 'new-password'}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   placeholder="••••••••"
@@ -328,6 +326,16 @@ export default function Auth() {
                 className="hover:text-[#261F1A] hover:underline flex items-center gap-1 cursor-pointer"
               >
                 <ArrowLeft size={12} /> Back to Sign In
+              </button>
+            )}
+
+            {view === 'reset' && (
+              <button
+                type="button"
+                onClick={() => { setView('forgot'); setResetToken(''); setError(''); setSuccessMsg(''); }}
+                className="hover:text-[#261F1A] hover:underline cursor-pointer"
+              >
+                Request a new link
               </button>
             )}
           </div>
