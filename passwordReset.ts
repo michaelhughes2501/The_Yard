@@ -160,7 +160,7 @@ export async function requestPasswordReset(
   } catch (err) {
     result = { sent: false, reason: err instanceof Error ? err.message : "sending failed" };
   }
-  if (!result.sent) {
+  if ("reason" in result) {
     discard();
     return { status: "not_sent", userId: issued.userId, reason: result.reason };
   }

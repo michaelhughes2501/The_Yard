@@ -792,6 +792,11 @@ async function startServer() {
     res.json({ success: true, message: RESET_REQUESTED_MESSAGE });
 
     if (!resetRequestsByEmail.take(email.toLowerCase())) return;
+    const missing = missingEmailSettings();
+    if (missing.length > 0) {
+      console.error(`Password reset requested, but no email can go out until these are set: ${missing.join(", ")}.`);
+      return;
+    }
     setImmediate(() => {
       requestPasswordReset(db, email, { appUrl: process.env.APP_URL, send: (message) => sendPasswordResetEmail(message) })
         .then((outcome) => {
@@ -810,7 +815,9 @@ async function startServer() {
     try {
       const outcome = await resetPasswordWithToken(db, token, newPassword);
       if (outcome.ok) return res.json({ success: true });
-      if (outcome.reason === "password_required") return res.status(400).json({ error: "New password is required" });
+      if ("reason" in outcome && outcome.reason === "password_required") {
+        return res.status(400).json({ error: "New password is required" });
+      }
       return res.status(400).json({ error: INVALID_RESET_LINK_MESSAGE });
     } catch (e) {
       console.error("Password reset error:", e);
