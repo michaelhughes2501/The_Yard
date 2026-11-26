@@ -75,5 +75,15 @@ API endpoints are defined under `server.ts`. Any path starting with `/api` will 
 ### Client-Side Hot-Reloads
 The Express server loads the Vite configuration on dynamic boots. Modifying file contents inside `src/` automatically tells the browser to refresh or update changed modules safely.
 
+### Password Reset Emails
+"Forgot password?" emails the member a link that works once and expires in 30 minutes. The code is never shown on screen or returned by the API, and only a hash of it is stored. Emails go out through [Resend](https://resend.com); set these in `.env` or your host's settings:
+
+* `RESEND_API_KEY`: an API key from your Resend account.
+* `EMAIL_FROM`: the sender, on a domain verified in Resend, e.g. `The Yard <no-reply@yourdomain.com>`.
+* `APP_URL`: the https address members open the app at (`http://localhost:3000` works locally).
+* `TRUST_PROXY=1`: when the app runs behind a proxy (Cloud Run, Vercel, Render), so the reset rate limits count each visitor separately.
+
+Until the first three are set, the server logs a warning at startup and reset requests send nothing.
+
 ### Local Database Checks
 When running locally, a SQLite database is initialized at `data/app.db`. Tables for Users, Threads, Responses, DMs (Kites), Job trackers, Housing directories, Notifications, and Documents are generated automatically upon startup.
