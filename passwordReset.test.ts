@@ -271,7 +271,7 @@ await test("sendPasswordResetEmail posts the email to Resend", async () => {
   assert.equal(body.from, env.EMAIL_FROM);
   assert.deepEqual(body.to, ["marcus@example.com"]);
   assert.ok(body.text.includes(message.resetUrl));
-  assert.equal(body.html, undefined, "plain text only");
+  assert.deepEqual(Object.keys(body).sort(), ["from", "subject", "text", "to"], "plain text only");
 });
 
 await test("sendPasswordResetEmail reports Resend errors and network failures without throwing", async () => {
