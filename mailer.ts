@@ -5,34 +5,34 @@ const RESEND_ENDPOINT = "https://api.resend.com/emails";
 type Env = Record<string, string | undefined>;
 type FetchLike = (url: string, init: RequestInit) => Promise<Pick<Response, "ok" | "status" | "text">>;
 
+/** A setting's value, or undefined when it's empty or still the .env.example placeholder. */
+function setting(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed && !trimmed.startsWith("MY_") ? trimmed : undefined;
+}
+
 /** What's missing before reset emails can go out, as setting names. Empty when everything is set. */
 export function missingEmailSettings(env: Env = process.env): string[] {
-  return ["RESEND_API_KEY", "EMAIL_FROM", "APP_URL"].filter((name) => {
-    const value = env[name]?.trim();
-    return !value || value.startsWith("MY_");
-  });
+  const missing: string[] = [];
+  if (!setting(env.RESEND_API_KEY)) missing.push("RESEND_API_KEY");
+  if (!setting(env.EMAIL_FROM)) missing.push("EMAIL_FROM");
+  if (!setting(env.APP_URL)) missing.push("APP_URL");
+  return missing;
 }
 
-function escapeHtml(text: string): string {
-  return text.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
-}
-
+/** The reset email, as plain text: mail apps turn the link into something to tap. */
 export function passwordResetEmailContent({ resetUrl, expiresInMinutes }: ResetEmail) {
   const subject = "Reset your password for The Yard";
   const text = [
     "Someone asked to reset the password for your account on The Yard.",
     "",
-    `Reset your password: ${resetUrl}`,
+    "Reset your password here:",
+    resetUrl,
     "",
     `This link works once and expires in ${expiresInMinutes} minutes.`,
     "If you didn't ask for this, you can ignore this email. Your password stays the same.",
   ].join("\n");
-  const href = escapeHtml(resetUrl);
-  const html = `<p>Someone asked to reset the password for your account on The Yard.</p>
-<p><a href="${href}">Reset your password</a></p>
-<p>This link works once and expires in ${expiresInMinutes} minutes.</p>
-<p>If you didn't ask for this, you can ignore this email. Your password stays the same.</p>`;
-  return { subject, text, html };
+  return { subject, text };
 }
 
 /**
@@ -46,18 +46,19 @@ export async function sendPasswordResetEmail(
   message: ResetEmail,
   { env = process.env, fetchImpl = fetch as FetchLike }: { env?: Env; fetchImpl?: FetchLike } = {},
 ): Promise<SendResult> {
-  const missing = missingEmailSettings(env).filter((name) => name !== "APP_URL");
-  if (missing.length > 0) return { sent: false, reason: `${missing.join(" and ")} not set` };
+  const apiKey = setting(env.RESEND_API_KEY);
+  const from = setting(env.EMAIL_FROM);
+  if (!apiKey || !from) {
+    const missing = [apiKey ? "" : "RESEND_API_KEY", from ? "" : "EMAIL_FROM"].filter(Boolean);
+    return { sent: false, reason: `${missing.join(" and ")} not set` };
+  }
 
-  const { subject, text, html } = passwordResetEmailContent(message);
+  const { subject, text } = passwordResetEmailContent(message);
   try {
     const res = await fetchImpl(RESEND_ENDPOINT, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${env.RESEND_API_KEY!.trim()}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ from: env.EMAIL_FROM!.trim(), to: [message.to], subject, text, html }),
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from, to: [message.to], subject, text }),
       signal: AbortSignal.timeout(10_000),
     });
     if (res.ok) return { sent: true };

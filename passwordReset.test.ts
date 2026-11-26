@@ -108,7 +108,7 @@ await test("email lookup ignores letter case and surrounding spaces", async () =
   const mailbox = fakeMailbox();
   const email = normalizeEmail("  Marcus@Example.com ");
   assert.equal(email, "Marcus@Example.com");
-  await requestPasswordReset(db, email!, { appUrl: APP_URL, send: mailbox.send });
+  await requestPasswordReset(db, email, { appUrl: APP_URL, send: mailbox.send });
   assert.equal(mailbox.sent[0]?.to, "marcus@example.com", "mail goes to the address on the account");
 });
 
@@ -216,7 +216,7 @@ await test("when the email can't be sent, no usable token is left behind", async
 
 await test("without a safe APP_URL nothing is sent", async () => {
   const db = await setup();
-  for (const appUrl of [undefined, "", "MY_APP_URL", "http://yard.example.com", "javascript:alert(1)"]) {
+  for (const appUrl of [undefined, "", "MY_APP_URL", "http://yard.example.com", "ftp://yard.example.com"]) {
     const mailbox = fakeMailbox();
     const outcome = await requestPasswordReset(db, "marcus@example.com", { appUrl, send: mailbox.send });
     assert.equal(outcome.status, "not_sent", String(appUrl));
@@ -232,7 +232,7 @@ await test("buildResetLink keeps the app's path, drops its query and puts the to
 
 await test("missingEmailSettings names what's not set, including placeholders", () => {
   assert.deepEqual(missingEmailSettings({}), ["RESEND_API_KEY", "EMAIL_FROM", "APP_URL"]);
-  assert.deepEqual(missingEmailSettings({ RESEND_API_KEY: "re_x", EMAIL_FROM: "The Yard <a@b.c>", APP_URL: "MY_APP_URL" }), ["APP_URL"]);
+  assert.deepEqual(missingEmailSettings({ RESEND_API_KEY: "re_x", EMAIL_FROM: "no-reply@yard.example.com", APP_URL: "MY_APP_URL" }), ["APP_URL"]);
   assert.deepEqual(missingEmailSettings({ RESEND_API_KEY: "re_x", EMAIL_FROM: "a@b.c", APP_URL: APP_URL }), []);
 });
 
@@ -261,7 +261,7 @@ await test("sendPasswordResetEmail posts the email to Resend", async () => {
     requests.push({ url, init });
     return { ok: true, status: 200, text: async () => '{"id":"1"}' };
   };
-  const env = { RESEND_API_KEY: "re_test", EMAIL_FROM: "The Yard <no-reply@yard.example.com>" };
+  const env = { RESEND_API_KEY: "re_test", EMAIL_FROM: "no-reply@yard.example.com" };
   assert.deepEqual(await sendPasswordResetEmail(message, { env, fetchImpl }), { sent: true });
 
   assert.equal(requests.length, 1);
@@ -271,7 +271,7 @@ await test("sendPasswordResetEmail posts the email to Resend", async () => {
   assert.equal(body.from, env.EMAIL_FROM);
   assert.deepEqual(body.to, ["marcus@example.com"]);
   assert.ok(body.text.includes(message.resetUrl));
-  assert.ok(body.html.includes("https://yard.example.com/#reset-token=abc"));
+  assert.equal(body.html, undefined, "plain text only");
 });
 
 await test("sendPasswordResetEmail reports Resend errors and network failures without throwing", async () => {
@@ -295,9 +295,10 @@ await test("sendPasswordResetEmail reports Resend errors and network failures wi
   assert.equal(down.sent, false);
 });
 
-await test("the email escapes the link in its HTML", () => {
-  const { html } = passwordResetEmailContent({ ...message, resetUrl: 'https://x.example.com/#reset-token=a"><b>' });
-  assert.ok(!html.includes('"><b>'));
+await test("the email names the link's expiry", () => {
+  const { subject, text } = passwordResetEmailContent(message);
+  assert.equal(subject, "Reset your password for The Yard");
+  assert.ok(text.includes("expires in 30 minutes"));
 });
 
 await test("FixedWindowLimiter allows the limit, then blocks until the window ends", () => {
